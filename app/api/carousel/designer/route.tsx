@@ -3,6 +3,7 @@ import path from 'path'
 import { NextResponse } from 'next/server'
 import { ImageResponse } from 'next/og'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { LucideIcon, pickSlideIcon } from '@/lib/icons'
 
 export const runtime = 'nodejs'
 
@@ -228,9 +229,11 @@ async function renderSlide(
   fontConfig: FontConfig,
   fonts: Awaited<ReturnType<typeof loadFontsForBrand>>,
   variant: LayoutVariant,
-  logoUrl: string | null
+  logoUrl: string | null,
+  brandName: string | null
 ) {
   const isAccent = variant === 'accent'
+  const icon = isAccent ? pickSlideIcon(slide.headline, slide.body, brandName) : null
 
   const image = new ImageResponse(
     (
@@ -288,6 +291,11 @@ async function renderSlide(
             gap: isAccent ? 32 : 24,
           }}
         >
+          {isAccent && icon && (
+            <div style={{ display: 'flex' }}>
+              <LucideIcon name={icon} size={48} color={colors.accent} strokeWidth={2} />
+            </div>
+          )}
           {isAccent && (
             <div
               style={{
@@ -461,7 +469,7 @@ export async function POST(request: Request) {
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
-      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant, logoUrl)
+      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant, logoUrl, brandName)
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage
