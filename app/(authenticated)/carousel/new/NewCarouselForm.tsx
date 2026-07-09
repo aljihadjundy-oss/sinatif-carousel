@@ -86,14 +86,22 @@ export default function NewCarouselForm({ profiles }: Props) {
 
   async function runDesignerAndRedirect(id: string) {
     setStage('design')
-    await fetch('/api/carousel/designer', {
+    const designRes = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ post_id: id }),
     })
 
-    // Land on the post either way — the script already exists, and the
-    // detail page offers a retry if design generation failed.
+    if (!designRes.ok) {
+      // Design generation failed, not script generation — the script step
+      // (if any ran) already succeeded by this point. Logged distinctly so
+      // this is never confused with a script-writer/Gemini failure. We
+      // still redirect: the script already exists, and the detail page
+      // offers a retry button for design generation.
+      const json = await designRes.json().catch(() => ({}))
+      console.error('Design generation failed:', json.error ?? designRes.statusText)
+    }
+
     router.push(`/carousel/${id}`)
   }
 
@@ -112,7 +120,7 @@ export default function NewCarouselForm({ profiles }: Props) {
 
     if (!scriptRes.ok) {
       const json = await scriptRes.json().catch(() => ({}))
-      setError(json.error ?? 'Something went wrong')
+      setError(json.error ?? 'Script generation failed')
       setStage('idle')
       return
     }
@@ -218,7 +226,7 @@ export default function NewCarouselForm({ profiles }: Props) {
 
     if (!scriptRes.ok) {
       const json = await scriptRes.json().catch(() => ({}))
-      setError(json.error ?? 'Something went wrong')
+      setError(json.error ?? 'Script generation failed')
       setStage('idle')
       setSelectingIdea(null)
       return
