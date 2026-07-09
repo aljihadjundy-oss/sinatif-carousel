@@ -48,9 +48,8 @@ export default function NewCarouselForm({ profiles }: Props) {
       return
     }
 
-    // No detail page yet — bounce to dashboard. Stage 2 will add a carousels list.
-    router.push('/dashboard')
-    router.refresh()
+    const { id } = await res.json()
+    router.push(`/carousel/${id}`)
   }
 
   return (
