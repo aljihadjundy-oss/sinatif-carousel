@@ -681,6 +681,37 @@ export async function POST(request: Request) {
     )
   }
 
+  // Regenerating with fewer slides than a previous generation (e.g. 8 -> 5)
+  // leaves slide-6.png..slide-8.png behind: upsert only overwrites matching
+  // paths, it never deletes extras. Sweep the post's folder for any
+  // slide-N.png beyond the current slide count and remove them. This only
+  // ever targets slide-*.png — the uploaded background image (background.*)
+  // lives in the same folder and is left untouched.
+  const { data: existingFiles, error: listErr } = await supabase.storage
+    .from('carousel-assets')
+    .list(postId)
+
+  if (listErr) {
+    console.error('designer: failed to list existing slide files for cleanup', listErr)
+  } else if (existingFiles) {
+    const orphanedPaths = existingFiles
+      .map((f) => {
+        const match = f.name.match(/^slide-(\d+)\.png$/)
+        return match ? { name: f.name, index: Number(match[1]) } : null
+      })
+      .filter((f): f is { name: string; index: number } => f !== null && f.index > total)
+      .map((f) => `${postId}/${f.name}`)
+
+    if (orphanedPaths.length > 0) {
+      const { error: removeErr } = await supabase.storage
+        .from('carousel-assets')
+        .remove(orphanedPaths)
+      if (removeErr) {
+        console.error('designer: failed to remove orphaned slide files', removeErr)
+      }
+    }
+  }
+
   await supabase.schema('carousel').from('slides').delete().eq('post_id', postId)
 
   const { error: slidesErr } = await supabase

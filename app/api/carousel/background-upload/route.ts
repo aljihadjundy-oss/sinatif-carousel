@@ -14,11 +14,18 @@ export const runtime = 'nodejs'
 // rotation into the pixels, then strips the orientation tag — verified
 // this produces a physically-rotated image with no residual EXIF
 // orientation left for Satori to (still) ignore.
-const FORMAT_EXTENSIONS: Record<string, string> = {
-  jpeg: 'jpg',
-  png: 'png',
-  webp: 'webp',
-}
+//
+// Uploaded phone photos were landing in storage 10-15x larger
+// (~910KB) than the solid-color slide renders they get composited
+// with (~40-80KB), since they were stored byte-for-byte as uploaded.
+// The designer route only ever displays this image downscaled into a
+// 1080x1350 slide (objectFit: cover), so anything wider than 1080px
+// is wasted storage — resizing to max width 1080 (no upscaling of
+// smaller images) and re-encoding as JPEG at 80% quality shrinks
+// storage cost with no visible quality loss at the render size it's
+// actually used at.
+const MAX_WIDTH = 1080
+const JPEG_QUALITY = 80
 
 export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient()
@@ -63,20 +70,20 @@ export async function POST(request: Request) {
   }
 
   let normalized: Buffer
-  let format: string
   try {
     const inputBuffer = Buffer.from(await file.arrayBuffer())
-    normalized = await sharp(inputBuffer).rotate().toBuffer()
-    const meta = await sharp(normalized).metadata()
-    format = meta.format ?? 'jpeg'
+    normalized = await sharp(inputBuffer)
+      .rotate()
+      .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toBuffer()
   } catch (err) {
     console.error('background-upload: image processing failed', err)
     return NextResponse.json({ error: 'Failed to process image' }, { status: 400 })
   }
 
-  const ext = FORMAT_EXTENSIONS[format] ?? 'jpg'
-  const path = `${postId}/background.${ext}`
-  const contentType = `image/${format === 'jpg' ? 'jpeg' : format}`
+  const path = `${postId}/background.jpg`
+  const contentType = 'image/jpeg'
 
   const { error: uploadErr } = await supabase.storage
     .from('carousel-assets')
