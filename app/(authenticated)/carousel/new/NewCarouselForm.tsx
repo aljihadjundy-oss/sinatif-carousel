@@ -14,8 +14,16 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [topic, setTopic] = useState('')
   const [audience, setAudience] = useState('')
   const [goal, setGoal] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [stage, setStage] = useState<'idle' | 'script' | 'design'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  const loading = stage !== 'idle'
+  const loadingLabel =
+    stage === 'script'
+      ? 'Menulis script…'
+      : stage === 'design'
+        ? 'Membuat desain…'
+        : 'Generate Script'
 
   function profileLabel(p: BrandProfileSummary) {
     const tag =
@@ -27,10 +35,10 @@ export default function NewCarouselForm({ profiles }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    setStage('script')
     setError(null)
 
-    const res = await fetch('/api/carousel/script-writer', {
+    const scriptRes = await fetch('/api/carousel/script-writer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -41,14 +49,24 @@ export default function NewCarouselForm({ profiles }: Props) {
       }),
     })
 
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}))
+    if (!scriptRes.ok) {
+      const json = await scriptRes.json().catch(() => ({}))
       setError(json.error ?? 'Something went wrong')
-      setLoading(false)
+      setStage('idle')
       return
     }
 
-    const { id } = await res.json()
+    const { id } = await scriptRes.json()
+
+    setStage('design')
+    await fetch('/api/carousel/designer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post_id: id }),
+    })
+
+    // Land on the post either way — the script already exists, and the
+    // detail page offers a retry if design generation failed.
     router.push(`/carousel/${id}`)
   }
 
@@ -125,7 +143,7 @@ export default function NewCarouselForm({ profiles }: Props) {
         disabled={loading}
         className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? 'Generating script…' : 'Generate Script'}
+        {loadingLabel}
       </button>
     </form>
   )

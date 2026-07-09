@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import RegenerateDesignButton from './RegenerateDesignButton'
 
 interface Slide {
   index: number
@@ -10,6 +11,11 @@ interface Slide {
 interface Script {
   title?: string
   slides?: Slide[]
+}
+
+interface RenderedSlide {
+  slide_order: number
+  rendered_image_url: string | null
 }
 
 export default async function CarouselPostPage({
@@ -39,8 +45,17 @@ export default async function CarouselPostPage({
     .limit(1)
     .maybeSingle()
 
+  const { data: renderedSlides } = await supabase
+    .schema('carousel')
+    .from('slides')
+    .select('slide_order, rendered_image_url')
+    .eq('post_id', id)
+    .order('slide_order', { ascending: true })
+
   const brand = post.brand_profiles as unknown as { name: string } | null
   const script = (scriptStage?.output_json ?? null) as Script | null
+  const slides = (renderedSlides ?? []) as RenderedSlide[]
+  const hasDesign = slides.some((s) => s.rendered_image_url)
 
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-6">
@@ -61,30 +76,68 @@ export default async function CarouselPostPage({
         Status: {post.status}
       </div>
 
-      {script?.slides && script.slides.length > 0 ? (
-        <div className="space-y-4">
-          {script.slides.map((slide) => (
-            <div
-              key={slide.index}
-              className="bg-white rounded-xl shadow p-5 dark:bg-gray-900"
-            >
-              <p className="text-xs text-gray-400 mb-1 dark:text-gray-500">
-                Slide {slide.index}
-              </p>
-              <h2 className="font-semibold text-lg mb-2 text-gray-900 dark:text-gray-100">
-                {slide.headline}
-              </h2>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap dark:text-gray-300">
-                {slide.body}
-              </p>
-            </div>
-          ))}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Design
+          </h2>
+          <RegenerateDesignButton
+            postId={post.id}
+            variant={hasDesign ? 'secondary' : 'primary'}
+          />
         </div>
-      ) : (
-        <p className="text-gray-500 text-sm dark:text-gray-400">
-          No script content available.
-        </p>
-      )}
+
+        {hasDesign ? (
+          <div className="grid grid-cols-2 gap-3">
+            {slides
+              .filter((s) => s.rendered_image_url)
+              .map((s) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={s.slide_order}
+                  src={s.rendered_image_url!}
+                  alt={`Slide ${s.slide_order}`}
+                  className="rounded-lg border border-gray-200 dark:border-gray-800"
+                />
+              ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No design generated yet — this can happen if the automatic
+            design step failed. Use the button above to try again.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Script
+        </h2>
+        {script?.slides && script.slides.length > 0 ? (
+          <div className="space-y-4">
+            {script.slides.map((slide) => (
+              <div
+                key={slide.index}
+                className="bg-white rounded-xl shadow p-5 dark:bg-gray-900"
+              >
+                <p className="text-xs text-gray-400 mb-1 dark:text-gray-500">
+                  Slide {slide.index}
+                </p>
+                <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-gray-100">
+                  {slide.headline}
+                </h3>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap dark:text-gray-300">
+                  {slide.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm dark:text-gray-400">
+            No script content available.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
