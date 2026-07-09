@@ -11,6 +11,14 @@ export const BUSINESS_UNITS = [
 
 export type BusinessUnit = (typeof BUSINESS_UNITS)[number]
 
+export interface VisualStyle {
+  colors?: Record<string, string>
+  fonts?: Record<string, string>
+  logo_url?: string | null
+  logo_description?: string | null
+  visual_notes?: string
+}
+
 export interface BrandProfile {
   id: string
   user_id: string
@@ -20,6 +28,7 @@ export interface BrandProfile {
   tone_guideline: string | null
   content_standards: string | null
   target_audience_default: string | null
+  visual_style: VisualStyle | null
   created_at: string
 }
 
