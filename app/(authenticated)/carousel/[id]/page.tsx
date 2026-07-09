@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import RegenerateDesignButton from './RegenerateDesignButton'
+import DownloadAllButton from './DownloadAllButton'
+import SlideImage from './SlideImage'
 
 interface Slide {
   index: number
@@ -77,14 +79,24 @@ export default async function CarouselPostPage({
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Design
           </h2>
-          <RegenerateDesignButton
-            postId={post.id}
-            variant={hasDesign ? 'secondary' : 'primary'}
-          />
+          <div className="flex items-center gap-2">
+            {hasDesign && (
+              <DownloadAllButton
+                topic={script?.title ?? post.topic}
+                slides={slides
+                  .filter((s) => s.rendered_image_url)
+                  .map((s) => ({ index: s.slide_order, url: s.rendered_image_url! }))}
+              />
+            )}
+            <RegenerateDesignButton
+              postId={post.id}
+              variant={hasDesign ? 'secondary' : 'primary'}
+            />
+          </div>
         </div>
 
         {hasDesign ? (
@@ -92,12 +104,11 @@ export default async function CarouselPostPage({
             {slides
               .filter((s) => s.rendered_image_url)
               .map((s) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <SlideImage
                   key={s.slide_order}
-                  src={s.rendered_image_url!}
-                  alt={`Slide ${s.slide_order}`}
-                  className="rounded-lg border border-gray-200 dark:border-gray-800"
+                  topic={script?.title ?? post.topic}
+                  index={s.slide_order}
+                  url={s.rendered_image_url!}
                 />
               ))}
           </div>
