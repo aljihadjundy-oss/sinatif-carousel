@@ -179,13 +179,67 @@ async function loadFontsForBrand(fontConfig: FontConfig) {
 type LayoutVariant = 'minimal' | 'accent'
 const LAYOUT_VARIANTS: LayoutVariant[] = ['minimal', 'accent']
 
-function pickColors(visualStyle: VisualStyle | null) {
-  const colors = visualStyle?.colors ? Object.values(visualStyle.colors) : []
+type TextDensity = 'concise' | 'standard' | 'detailed'
+const TEXT_DENSITIES: TextDensity[] = ['concise', 'standard', 'detailed']
+
+type Hierarchy = 'headline_focused' | 'balanced'
+const HIERARCHIES: Hierarchy[] = ['headline_focused', 'balanced']
+
+// colorScheme, when given, names which entry in visual_style.colors should
+// be used as the background — the rest of the palette (in original order,
+// minus that entry) still supplies accent/fg the same way pickColors
+// already did, so picking a scheme just re-roots which color is "first".
+function pickColors(visualStyle: VisualStyle | null, colorScheme: string | null) {
+  const namedColors = visualStyle?.colors ?? {}
+  const entries = Object.entries(namedColors)
+
+  if (colorScheme && namedColors[colorScheme]) {
+    const bg = namedColors[colorScheme]
+    const rest = entries.filter(([name]) => name !== colorScheme).map(([, v]) => v)
+    return {
+      bg,
+      fg: rest[rest.length - 1] ?? '#ffffff',
+      accent: rest[0] ?? bg,
+    }
+  }
+
+  const colors = entries.map(([, v]) => v)
   return {
     bg: colors[0] ?? '#111827',
     fg: colors[colors.length - 1] ?? '#ffffff',
     accent: colors[1] ?? colors[0] ?? '#2563eb',
   }
+}
+
+const BODY_FONT_SIZE: Record<TextDensity, number> = {
+  concise: 28,
+  standard: 32,
+  detailed: 36,
+}
+
+const BODY_CHAR_LIMIT: Record<TextDensity, number | null> = {
+  concise: 110,
+  standard: 220,
+  detailed: null,
+}
+
+function applyTextDensity(body: string, density: TextDensity): string {
+  const limit = BODY_CHAR_LIMIT[density]
+  if (!limit || body.length <= limit) return body
+  return `${body.slice(0, limit).trimEnd()}…`
+}
+
+const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
+  headline_focused: 76,
+  balanced: 64,
+}
+
+// Headline-focused shrinks body text relative to whatever text_density
+// already picked, rather than a second independent size table competing
+// with it.
+function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
+  const base = BODY_FONT_SIZE[density]
+  return hierarchy === 'headline_focused' ? Math.round(base * 0.85) : base
 }
 
 // Slide number indicator: plain text for "minimal", a colored pill badge
@@ -230,10 +284,13 @@ async function renderSlide(
   fonts: Awaited<ReturnType<typeof loadFontsForBrand>>,
   variant: LayoutVariant,
   logoUrl: string | null,
-  brandName: string | null
+  brandName: string | null,
+  textDensity: TextDensity,
+  hierarchy: Hierarchy
 ) {
   const isAccent = variant === 'accent'
   const icon = isAccent ? pickSlideIcon(slide.headline, slide.body, brandName) : null
+  const body = applyTextDensity(slide.body, textDensity)
 
   const image = new ImageResponse(
     (
@@ -311,7 +368,7 @@ async function renderSlide(
               display: 'flex',
               fontFamily: fontConfig.headlineFamily,
               fontWeight: fontConfig.headlineWeight,
-              fontSize: 64,
+              fontSize: HEADLINE_FONT_SIZE[hierarchy],
               lineHeight: 1.15,
             }}
           >
@@ -322,12 +379,12 @@ async function renderSlide(
               display: 'flex',
               fontFamily: fontConfig.bodyFamily,
               fontWeight: fontConfig.bodyWeight,
-              fontSize: 32,
+              fontSize: bodyFontSize(textDensity, hierarchy),
               lineHeight: 1.4,
               opacity: 0.9,
             }}
           >
-            {slide.body}
+            {body}
           </div>
         </div>
 
@@ -354,7 +411,13 @@ export async function POST(request: Request) {
   // in permanently.
   console.log(`designer: request from user ${user.id}`)
 
-  let body: { post_id?: string; layout_variant?: string }
+  let body: {
+    post_id?: string
+    layout_variant?: string
+    color_scheme?: string | null
+    text_density?: string
+    hierarchy?: string
+  }
   try {
     body = await request.json()
   } catch {
@@ -375,11 +438,29 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  if (
+    body.text_density !== undefined &&
+    !TEXT_DENSITIES.includes(body.text_density as TextDensity)
+  ) {
+    return NextResponse.json(
+      { error: `text_density must be one of: ${TEXT_DENSITIES.join(', ')}` },
+      { status: 400 }
+    )
+  }
+  if (
+    body.hierarchy !== undefined &&
+    !HIERARCHIES.includes(body.hierarchy as Hierarchy)
+  ) {
+    return NextResponse.json(
+      { error: `hierarchy must be one of: ${HIERARCHIES.join(', ')}` },
+      { status: 400 }
+    )
+  }
 
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, brand_profile_id, layout_variant')
+    .select('id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy')
     .eq('id', postId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -391,12 +472,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Post not found' }, { status: 404 })
   }
 
-  // Falling back to the post's last-used variant (rather than always
-  // "minimal") is what makes regenerating remember the previous choice.
+  // Falling back to the post's last-used choices (rather than a fixed
+  // default) is what makes regenerating remember previous selections.
   const layoutVariant: LayoutVariant =
     (body.layout_variant as LayoutVariant | undefined) ??
     (post.layout_variant as LayoutVariant | null) ??
     'minimal'
+  const colorScheme: string | null =
+    body.color_scheme !== undefined ? body.color_scheme : (post.color_scheme as string | null)
+  const textDensity: TextDensity =
+    (body.text_density as TextDensity | undefined) ??
+    (post.text_density as TextDensity | null) ??
+    'standard'
+  const hierarchy: Hierarchy =
+    (body.hierarchy as Hierarchy | undefined) ??
+    (post.hierarchy as Hierarchy | null) ??
+    'balanced'
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -433,7 +524,7 @@ export async function POST(request: Request) {
     brandName = brand?.name ?? null
   }
 
-  const colors = pickColors(visualStyle)
+  const colors = pickColors(visualStyle, colorScheme)
   const logoUrl = visualStyle?.logo_url ?? null
   const mappedFonts = brandName ? BRAND_FONTS[brandName] : undefined
   if (brandName && !mappedFonts) {
@@ -469,7 +560,18 @@ export async function POST(request: Request) {
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
-      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant, logoUrl, brandName)
+      const png = await renderSlide(
+        slide,
+        total,
+        colors,
+        fontConfig,
+        fonts,
+        layoutVariant,
+        logoUrl,
+        brandName,
+        textDensity,
+        hierarchy
+      )
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage
@@ -529,8 +631,21 @@ export async function POST(request: Request) {
   await supabase
     .schema('carousel')
     .from('posts')
-    .update({ status: 'designed', layout_variant: layoutVariant })
+    .update({
+      status: 'designed',
+      layout_variant: layoutVariant,
+      color_scheme: colorScheme,
+      text_density: textDensity,
+      hierarchy: hierarchy,
+    })
     .eq('id', postId)
 
-  return NextResponse.json({ post_id: postId, slides: renderedSlides, layout_variant: layoutVariant })
+  return NextResponse.json({
+    post_id: postId,
+    slides: renderedSlides,
+    layout_variant: layoutVariant,
+    color_scheme: colorScheme,
+    text_density: textDensity,
+    hierarchy: hierarchy,
+  })
 }
