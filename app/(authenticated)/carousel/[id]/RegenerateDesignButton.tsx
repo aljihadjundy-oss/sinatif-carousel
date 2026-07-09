@@ -80,18 +80,31 @@ export default function RegenerateDesignButton({
     }
 
     setLoadingLabel('Membuat desain…')
+    const requestBody = {
+      post_id: postId,
+      layout_variant: layoutVariant,
+      color_scheme: colorScheme || null,
+      text_density: textDensity,
+      hierarchy: hierarchy,
+      background_image_url: effectiveBackgroundUrl,
+      icon_name: iconSelection === 'auto' ? null : iconSelection,
+    }
+
+    // Gated behind NEXT_PUBLIC_DEBUG_DESIGNER rather than always-on: logs
+    // the exact body this button is about to send, to compare (in the
+    // browser console) against what the designer route logs it received
+    // (same gate, server-side) when diagnosing a "design options don't
+    // visibly change anything" report — confirms whether the UI's
+    // selections are actually captured and sent before looking any
+    // further downstream.
+    if (process.env.NEXT_PUBLIC_DEBUG_DESIGNER) {
+      console.log('RegenerateDesignButton: sending designer request body', requestBody)
+    }
+
     const res = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        post_id: postId,
-        layout_variant: layoutVariant,
-        color_scheme: colorScheme || null,
-        text_density: textDensity,
-        hierarchy: hierarchy,
-        background_image_url: effectiveBackgroundUrl,
-        icon_name: iconSelection === 'auto' ? null : iconSelection,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!res.ok) {
