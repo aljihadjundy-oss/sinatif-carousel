@@ -31,8 +31,18 @@ interface GenerateStructuredContentInput {
 // production error where Gemini returned 503 with no code bug involved.
 // Retrying with backoff is standard practice for these rather than
 // surfacing a hard failure on the first transient blip.
+//
+// The original 1s/3s/9s schedule (13s of pure delay, before any generation
+// time) was confirmed via Vercel logs to be the actual cause of a 502:
+// callers run with maxDuration=60 now (see script-writer/route.ts and
+// ideation/route.ts), but at the time this route had no maxDuration set
+// and Vercel's default 10s timeout killed the function mid-retry, which
+// surfaces to the client as a generic 502 rather than any error this code
+// throws. 500ms/1.5s/3s (5s total delay) leaves much more of the 60s
+// budget for the actual generateContent() calls themselves, and still
+// backs off meaningfully between attempts.
 const RETRYABLE_STATUS_CODES = [429, 503]
-const RETRY_DELAYS_MS = [1000, 3000, 9000]
+const RETRY_DELAYS_MS = [500, 1500, 3000]
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))

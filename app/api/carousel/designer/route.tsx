@@ -6,6 +6,14 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { ICON_NAMES, IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
 
 export const runtime = 'nodejs'
+// This route does not call Gemini (generateStructuredContent) — it's pure
+// Satori rendering — but it renders every slide (up to 12) sequentially,
+// each involving font loading and an ImageResponse render plus a Storage
+// upload, which can add up past Vercel's 10s default timeout on larger
+// carousels. 60 is the max maxDuration Vercel allows for a standard
+// (non-Fluid-Compute) Hobby-plan function.
+// https://vercel.com/docs/functions/configuring-functions/duration
+export const maxDuration = 60
 
 interface Slide {
   index: number
