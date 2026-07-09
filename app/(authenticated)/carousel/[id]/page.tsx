@@ -32,7 +32,9 @@ export default async function CarouselPostPage({
   const { data: post } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, topic, status, layout_variant, brand_profiles(name)')
+    .select(
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, brand_profiles(name, visual_style)'
+    )
     .eq('id', id)
     .single()
 
@@ -55,7 +57,10 @@ export default async function CarouselPostPage({
     .eq('post_id', id)
     .order('slide_order', { ascending: true })
 
-  const brand = post.brand_profiles as unknown as { name: string } | null
+  const brand = post.brand_profiles as unknown as {
+    name: string
+    visual_style: { colors?: Record<string, string> } | null
+  } | null
   const script = (scriptStage?.output_json ?? null) as Script | null
   const slides = (renderedSlides ?? []) as RenderedSlide[]
   const hasDesign = slides.some((s) => s.rendered_image_url)
@@ -85,24 +90,31 @@ export default async function CarouselPostPage({
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Design
           </h2>
-          <div className="flex items-center gap-2">
-            {hasDesign && (
-              <DownloadAllButton
-                topic={script?.title ?? post.topic}
-                slides={slides
-                  .filter((s) => s.rendered_image_url)
-                  .map((s) => ({ index: s.slide_order, url: s.rendered_image_url! }))}
-              />
-            )}
-            <RegenerateDesignButton
-              postId={post.id}
-              buttonStyle={hasDesign ? 'secondary' : 'primary'}
-              initialLayoutVariant={
-                (post.layout_variant as 'minimal' | 'accent' | null) ?? 'minimal'
-              }
+          {hasDesign && (
+            <DownloadAllButton
+              topic={script?.title ?? post.topic}
+              slides={slides
+                .filter((s) => s.rendered_image_url)
+                .map((s) => ({ index: s.slide_order, url: s.rendered_image_url! }))}
             />
-          </div>
+          )}
         </div>
+
+        <RegenerateDesignButton
+          postId={post.id}
+          buttonStyle={hasDesign ? 'secondary' : 'primary'}
+          initialLayoutVariant={
+            (post.layout_variant as 'minimal' | 'accent' | null) ?? 'minimal'
+          }
+          initialColorScheme={post.color_scheme}
+          initialTextDensity={
+            (post.text_density as 'concise' | 'standard' | 'detailed' | null) ?? 'standard'
+          }
+          initialHierarchy={
+            (post.hierarchy as 'headline_focused' | 'balanced' | null) ?? 'balanced'
+          }
+          brandColors={brand?.visual_style?.colors ?? null}
+        />
 
         {hasDesign ? (
           <div className="grid grid-cols-2 gap-3">
