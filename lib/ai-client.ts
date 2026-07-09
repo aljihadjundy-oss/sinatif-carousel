@@ -2,7 +2,7 @@
 // Claude API for production — swap the implementation inside
 // generateStructuredContent(), callers remain unchanged.
 
-import { GoogleGenerativeAI, Schema } from '@google/generative-ai'
+import { GoogleGenerativeAI, GoogleGenerativeAIFetchError, Schema } from '@google/generative-ai'
 
 // gemini-2.5-flash was shut down by Google on 2026-06-17 ("model ...
 // is no longer available", 404), which broke every AI-backed route.
@@ -26,6 +26,26 @@ interface GenerateStructuredContentInput {
   jsonSchema: object
 }
 
+// 503 (model overloaded) and 429 (rate limited) are transient,
+// server-side conditions on Google's end — confirmed via a real
+// production error where Gemini returned 503 with no code bug involved.
+// Retrying with backoff is standard practice for these rather than
+// surfacing a hard failure on the first transient blip.
+const RETRYABLE_STATUS_CODES = [429, 503]
+const RETRY_DELAYS_MS = [1000, 3000, 9000]
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableError(err: unknown): boolean {
+  return (
+    err instanceof GoogleGenerativeAIFetchError &&
+    err.status !== undefined &&
+    RETRYABLE_STATUS_CODES.includes(err.status)
+  )
+}
+
 export async function generateStructuredContent({
   systemPrompt,
   userPrompt,
@@ -46,8 +66,26 @@ export async function generateStructuredContent({
     },
   })
 
-  const result = await model.generateContent(userPrompt)
-  const text = result.response.text()
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const result = await model.generateContent(userPrompt)
+      const text = result.response.text()
+      return JSON.parse(text)
+    } catch (err) {
+      lastErr = err
+      if (!isRetryableError(err) || attempt === RETRY_DELAYS_MS.length) {
+        throw err
+      }
+      const delay = RETRY_DELAYS_MS[attempt]
+      console.warn(
+        `ai-client: Gemini returned a transient error (status ${
+          (err as GoogleGenerativeAIFetchError).status
+        }), retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length})`
+      )
+      await sleep(delay)
+    }
+  }
 
-  return JSON.parse(text)
+  throw lastErr
 }
