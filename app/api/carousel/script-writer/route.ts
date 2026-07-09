@@ -92,6 +92,7 @@ export async function POST(request: Request) {
   }
 
   const { data: brand, error: brandErr } = await supabase
+    .schema('carousel')
     .from('brand_profiles')
     .select('id, name, tone_guideline, content_standards')
     .eq('id', brandProfileId)
@@ -131,15 +132,15 @@ export async function POST(request: Request) {
   }
 
   const { data: inserted, error: insertErr } = await supabase
-    .from('carousel_posts')
+    .schema('carousel')
+    .from('posts')
     .insert({
       user_id: user.id,
       brand_profile_id: brand.id,
       topic,
       audience,
       goal,
-      script,
-      status: 'generated',
+      status: 'scripted',
     })
     .select('id')
     .single()
@@ -149,6 +150,20 @@ export async function POST(request: Request) {
       { error: insertErr?.message ?? 'Insert failed' },
       { status: 500 }
     )
+  }
+
+  const { error: stageErr } = await supabase
+    .schema('carousel')
+    .from('stage_outputs')
+    .insert({
+      post_id: inserted.id,
+      stage: 'script',
+      output_json: script,
+    })
+
+  if (stageErr) {
+    await supabase.schema('carousel').from('posts').delete().eq('id', inserted.id)
+    return NextResponse.json({ error: stageErr.message }, { status: 500 })
   }
 
   return NextResponse.json({ id: inserted.id })

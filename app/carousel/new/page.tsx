@@ -11,8 +11,10 @@ export default async function NewCarouselPage() {
   if (!user) redirect('/login')
 
   const { data: profiles } = await supabase
+    .schema('carousel')
     .from('brand_profiles')
     .select('id, name, profile_type, business_unit')
+    .eq('is_active', true)
     .order('created_at', { ascending: false })
 
   const summary = (profiles ?? []) as BrandProfileSummary[]

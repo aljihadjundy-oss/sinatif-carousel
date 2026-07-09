@@ -1,6 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { CarouselPost } from '@/lib/types'
 
 interface Slide {
   index: number
@@ -26,23 +25,32 @@ export default async function CarouselPostPage({
   if (!user) redirect('/login')
 
   const { data: post } = await supabase
-    .from('carousel_posts')
-    .select('*, brand_profiles(name)')
+    .schema('carousel')
+    .from('posts')
+    .select('id, topic, status, brand_profiles(name)')
     .eq('id', id)
     .single()
 
   if (!post) notFound()
 
-  const typedPost = post as CarouselPost & {
-    brand_profiles: { name: string } | null
-  }
-  const script = typedPost.script as Script | null
+  const { data: scriptStage } = await supabase
+    .schema('carousel')
+    .from('stage_outputs')
+    .select('output_json')
+    .eq('post_id', id)
+    .eq('stage', 'script')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const brand = post.brand_profiles as unknown as { name: string } | null
+  const script = (scriptStage?.output_json ?? null) as Script | null
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">{script?.title ?? typedPost.topic}</h1>
+          <h1 className="text-2xl font-bold">{script?.title ?? post.topic}</h1>
           <a
             href="/carousel/new"
             className="text-sm text-gray-500 hover:text-gray-700"
@@ -52,10 +60,8 @@ export default async function CarouselPostPage({
         </div>
 
         <div className="text-sm text-gray-500">
-          {typedPost.brand_profiles?.name && (
-            <span>Brand: {typedPost.brand_profiles.name} · </span>
-          )}
-          Status: {typedPost.status}
+          {brand?.name && <span>Brand: {brand.name} · </span>}
+          Status: {post.status}
         </div>
 
         {script?.slides && script.slides.length > 0 ? (

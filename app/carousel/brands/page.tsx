@@ -11,6 +11,7 @@ export default async function BrandsPage() {
   if (!user) redirect('/login')
 
   const { data: profiles } = await supabase
+    .schema('carousel')
     .from('brand_profiles')
     .select('*')
     .order('created_at', { ascending: false })
