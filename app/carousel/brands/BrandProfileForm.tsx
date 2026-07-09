@@ -44,7 +44,10 @@ export default function BrandProfileForm() {
     }
     if (profileType === 'internal_bu') payload.business_unit = businessUnit
 
-    const { error: dbErr } = await supabase.from('brand_profiles').insert(payload)
+    const { error: dbErr } = await supabase
+      .schema('carousel')
+      .from('brand_profiles')
+      .insert(payload)
     if (dbErr) {
       setError(dbErr.message)
     } else {
