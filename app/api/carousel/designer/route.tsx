@@ -19,6 +19,7 @@ interface Script {
 
 interface VisualStyle {
   colors?: Record<string, string>
+  logo_url?: string | null
 }
 
 type FontWeight = 400 | 500 | 600 | 700 | 800 | 900
@@ -226,7 +227,8 @@ async function renderSlide(
   colors: { bg: string; fg: string; accent: string },
   fontConfig: FontConfig,
   fonts: Awaited<ReturnType<typeof loadFontsForBrand>>,
-  variant: LayoutVariant
+  variant: LayoutVariant,
+  logoUrl: string | null
 ) {
   const isAccent = variant === 'accent'
 
@@ -247,6 +249,17 @@ async function renderSlide(
           overflow: 'hidden',
         }}
       >
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt=""
+            width={60}
+            height={60}
+            style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
+          />
+        )}
+
         {isAccent && (
           // Corner accent: a simple geometric circle, partly off-canvas —
           // satori only supports basic primitives (rect/circle/line via
@@ -408,6 +421,7 @@ export async function POST(request: Request) {
   }
 
   const colors = pickColors(visualStyle)
+  const logoUrl = visualStyle?.logo_url ?? null
   const mappedFonts = brandName ? BRAND_FONTS[brandName] : undefined
   if (brandName && !mappedFonts) {
     console.warn(
@@ -442,7 +456,7 @@ export async function POST(request: Request) {
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
-      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant)
+      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant, logoUrl)
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage

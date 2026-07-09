@@ -17,6 +17,8 @@ export default function BrandProfileForm() {
   const [toneGuideline, setToneGuideline] = useState('')
   const [contentStandards, setContentStandards] = useState('')
   const [targetAudience, setTargetAudience] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoInputKey, setLogoInputKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,19 +46,57 @@ export default function BrandProfileForm() {
     }
     if (profileType === 'internal_bu') payload.business_unit = businessUnit
 
-    const { error: dbErr } = await supabase
+    const { data: profile, error: dbErr } = await supabase
       .schema('carousel')
       .from('brand_profiles')
       .insert(payload)
-    if (dbErr) {
-      setError(dbErr.message)
-    } else {
-      router.refresh()
-      setName('')
-      setToneGuideline('')
-      setContentStandards('')
-      setTargetAudience('')
+      .select('id')
+      .single()
+
+    if (dbErr || !profile) {
+      setError(dbErr?.message ?? 'Failed to create profile')
+      setLoading(false)
+      return
     }
+
+    if (logoFile) {
+      const path = `logos/${profile.id}.png`
+      const { error: uploadErr } = await supabase.storage
+        .from('carousel-assets')
+        .upload(path, logoFile, { contentType: logoFile.type, upsert: true })
+
+      if (uploadErr) {
+        setError(`Profile created, but logo upload failed: ${uploadErr.message}`)
+        setLoading(false)
+        router.refresh()
+        return
+      }
+
+      const { data: publicUrl } = supabase.storage
+        .from('carousel-assets')
+        .getPublicUrl(path)
+
+      const { error: visualStyleErr } = await supabase
+        .schema('carousel')
+        .from('brand_profiles')
+        .update({ visual_style: { logo_url: publicUrl.publicUrl } })
+        .eq('id', profile.id)
+
+      if (visualStyleErr) {
+        setError(`Profile created, but saving logo URL failed: ${visualStyleErr.message}`)
+        setLoading(false)
+        router.refresh()
+        return
+      }
+    }
+
+    router.refresh()
+    setName('')
+    setToneGuideline('')
+    setContentStandards('')
+    setTargetAudience('')
+    setLogoFile(null)
+    setLogoInputKey((k) => k + 1)
     setLoading(false)
   }
 
@@ -150,6 +190,20 @@ export default function BrandProfileForm() {
           placeholder="List content dos and don'ts, formatting rules…"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Logo
+        </label>
+        <input
+          key={logoInputKey}
+          type="file"
+          accept="image/png,image/svg+xml"
+          onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:file:bg-gray-800 dark:file:text-gray-300 dark:hover:file:bg-gray-700"
+        />
+        <p className="mt-1 text-xs text-gray-400">PNG or SVG. Rendered on every slide.</p>
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
