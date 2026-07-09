@@ -231,8 +231,23 @@ const BODY_CHAR_LIMIT: Record<TextDensity, number | null> = {
   detailed: null,
 }
 
-function applyTextDensity(body: string, density: TextDensity): string {
-  const limit = BODY_CHAR_LIMIT[density]
+// Image-background slides put headline + body + slide number inside a
+// bottom-anchored block covering ~38% of slide height (see
+// BOTTOM_BLOCK_HEIGHT), rather than the full padded slide — so even
+// "detailed" needs a hard cap here, and every tier is capped noticeably
+// tighter than the solid-background limits above.
+const BODY_CHAR_LIMIT_IMAGE_BG: Record<TextDensity, number> = {
+  concise: 60,
+  standard: 100,
+  detailed: 130,
+}
+
+function applyTextDensity(
+  body: string,
+  density: TextDensity,
+  hasBackgroundImage: boolean
+): string {
+  const limit = hasBackgroundImage ? BODY_CHAR_LIMIT_IMAGE_BG[density] : BODY_CHAR_LIMIT[density]
   if (!limit || body.length <= limit) return body
   return `${body.slice(0, limit).trimEnd()}…`
 }
@@ -252,13 +267,18 @@ function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
 
 // Slide number indicator: plain text for "minimal", a colored pill badge
 // for "accent". Shared by both variants so the numbering logic lives once.
+// `onAccentBlock` is used inside the bottom accent-colored block on
+// image-background slides — the normal accent pill (colors.accent
+// background) would be invisible against a block that's already
+// colors.accent, so it falls back to plain text there instead.
 function slideNumberBadge(
   slide: Slide,
   total: number,
   colors: { bg: string; fg: string; accent: string },
-  variant: LayoutVariant
+  variant: LayoutVariant,
+  onAccentBlock: boolean = false
 ) {
-  if (variant === 'minimal') {
+  if (variant === 'minimal' || onAccentBlock) {
     return (
       <div style={{ display: 'flex', fontSize: 28, opacity: 0.7 }}>
         {slide.index} / {total}
@@ -284,6 +304,12 @@ function slideNumberBadge(
   )
 }
 
+// Bottom-anchored block height for image-background slides — roughly 38%
+// of the 1350px canvas. Chosen to comfortably fit headline + a capped
+// body + slide number (see BODY_CHAR_LIMIT_IMAGE_BG) without the block
+// itself dominating the photo.
+const BOTTOM_BLOCK_HEIGHT = 540
+
 async function renderSlide(
   slide: Slide,
   total: number,
@@ -304,161 +330,198 @@ async function renderSlide(
       ? null
       : (iconChoice as IconName | null) ?? pickSlideIcon(slide.headline, slide.body, brandName)
     : null
-  const body = applyTextDensity(slide.body, textDensity)
   const hasBackgroundImage = !!backgroundImageUrl
-  // Text always renders over a dark scrim when there's a background photo,
-  // regardless of the brand's chosen fg color — the prior fixed-opacity
-  // overlay alone proved insufficient for real photos (verified with an
-  // actual EXIF-rotated test photo, not the earlier synthetic solid-color
-  // test image).
-  const textColor = hasBackgroundImage ? '#FFFFFF' : colors.fg
+  const body = applyTextDensity(slide.body, textDensity, hasBackgroundImage)
 
-  const image = new ImageResponse(
-    (
+  const content = hasBackgroundImage ? (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        backgroundColor: colors.bg,
+        fontFamily: fontConfig.bodyFamily,
+        overflow: 'hidden',
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={backgroundImageUrl}
+        alt=""
+        width={1080}
+        height={1350}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 1080,
+          height: 1350,
+          objectFit: 'cover',
+        }}
+      />
+
+      {logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt=""
+          width={60}
+          height={60}
+          style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
+        />
+      )}
+
+      {/* Bottom-anchored solid block, not floating text over the photo:
+          replaces the earlier full-image dark scrim + translucent text
+          box. No other decorative accent (corner shape, badge) is allowed
+          to float loose over the photo outside this block — everything
+          accent-related for image-background slides lives inside it. */}
       <div
         style={{
-          position: 'relative',
-          width: '100%',
-          height: '100%',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: 1080,
+          height: BOTTOM_BLOCK_HEIGHT,
+          backgroundColor: colors.accent,
+          color: '#FFFFFF',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          backgroundColor: colors.bg,
-          color: textColor,
-          padding: 80,
-          fontFamily: fontConfig.bodyFamily,
-          overflow: 'hidden',
+          justifyContent: 'center',
+          gap: isAccent ? 24 : 20,
+          padding: '48px 80px',
         }}
       >
-        {backgroundImageUrl && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={backgroundImageUrl}
-              alt=""
-              width={1080}
-              height={1350}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: 1080,
-                height: 1350,
-                objectFit: 'cover',
-              }}
-            />
-            {/* Whole-image darkening tint — strengthened from the earlier
-                fixed opacity (0.55 → 0.7, always black rather than the
-                brand bg color) plus the dedicated text scrim below it,
-                per spec: not dynamic brightness detection, just a
-                stronger fixed treatment verified against a real photo. */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: 1080,
-                height: 1350,
-                backgroundColor: '#000000',
-                opacity: 0.7,
-                display: 'flex',
-              }}
-            />
-          </>
+        {isAccent && icon && (
+          <div style={{ display: 'flex' }}>
+            <LucideIcon name={icon} size={44} color="#FFFFFF" strokeWidth={2} />
+          </div>
         )}
-
-        {logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt=""
-            width={60}
-            height={60}
-            style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
-          />
-        )}
-
         {isAccent && (
-          // Corner accent: a simple geometric circle, partly off-canvas —
-          // satori only supports basic primitives (rect/circle/line via
-          // CSS shapes), not SVG icon libraries.
-          <div
-            style={{
-              position: 'absolute',
-              top: -140,
-              right: -140,
-              width: 320,
-              height: 320,
-              borderRadius: 9999,
-              backgroundColor: colors.accent,
-              opacity: 0.15,
-              display: 'flex',
-            }}
-          />
+          <div style={{ display: 'flex', width: 100, height: 5, backgroundColor: '#FFFFFF' }} />
         )}
-
-        {slideNumberBadge(slide, total, colors, variant)}
-
         <div
           style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: isAccent ? 32 : 24,
-            ...(hasBackgroundImage
-              ? {
-                  backgroundColor: 'rgba(0, 0, 0, 0.45)',
-                  padding: 32,
-                  borderRadius: 16,
-                  margin: -32,
-                }
-              : {}),
+            fontFamily: fontConfig.headlineFamily,
+            fontWeight: fontConfig.headlineWeight,
+            fontSize: HEADLINE_FONT_SIZE[hierarchy],
+            lineHeight: 1.15,
           }}
         >
-          {isAccent && icon && (
-            <div style={{ display: 'flex' }}>
-              <LucideIcon name={icon} size={48} color={colors.accent} strokeWidth={2} />
-            </div>
-          )}
-          {isAccent && (
-            <div
-              style={{
-                display: 'flex',
-                width: 120,
-                height: 6,
-                backgroundColor: colors.accent,
-              }}
-            />
-          )}
-          <div
-            style={{
-              display: 'flex',
-              fontFamily: fontConfig.headlineFamily,
-              fontWeight: fontConfig.headlineWeight,
-              fontSize: HEADLINE_FONT_SIZE[hierarchy],
-              lineHeight: 1.15,
-            }}
-          >
-            {slide.headline}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              fontFamily: fontConfig.bodyFamily,
-              fontWeight: fontConfig.bodyWeight,
-              fontSize: bodyFontSize(textDensity, hierarchy),
-              lineHeight: 1.4,
-              opacity: 0.9,
-            }}
-          >
-            {body}
-          </div>
+          {slide.headline}
         </div>
-
-        <div style={{ display: 'flex', width: 64, height: 8, backgroundColor: colors.accent }} />
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.bodyFamily,
+            fontWeight: fontConfig.bodyWeight,
+            fontSize: bodyFontSize(textDensity, hierarchy),
+            lineHeight: 1.4,
+            opacity: 0.9,
+          }}
+        >
+          {body}
+        </div>
+        {slideNumberBadge(slide, total, colors, variant, true)}
       </div>
-    ),
-    { width: 1080, height: 1350, fonts }
+    </div>
+  ) : (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        backgroundColor: colors.bg,
+        color: colors.fg,
+        padding: 80,
+        fontFamily: fontConfig.bodyFamily,
+        overflow: 'hidden',
+      }}
+    >
+      {logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt=""
+          width={60}
+          height={60}
+          style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
+        />
+      )}
+
+      {isAccent && (
+        // Corner accent only — a small geometric shape tucked into one
+        // corner, partly off-canvas, never a border/outline around the
+        // whole frame. Satori only supports basic primitives (rect/circle/
+        // line via CSS shapes), not SVG icon libraries.
+        <div
+          style={{
+            position: 'absolute',
+            top: -140,
+            right: -140,
+            width: 320,
+            height: 320,
+            borderRadius: 9999,
+            backgroundColor: colors.accent,
+            opacity: 0.15,
+            display: 'flex',
+          }}
+        />
+      )}
+
+      {slideNumberBadge(slide, total, colors, variant)}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: isAccent ? 32 : 24 }}>
+        {isAccent && icon && (
+          <div style={{ display: 'flex' }}>
+            <LucideIcon name={icon} size={48} color={colors.accent} strokeWidth={2} />
+          </div>
+        )}
+        {isAccent && (
+          <div
+            style={{
+              display: 'flex',
+              width: 120,
+              height: 6,
+              backgroundColor: colors.accent,
+            }}
+          />
+        )}
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.headlineFamily,
+            fontWeight: fontConfig.headlineWeight,
+            fontSize: HEADLINE_FONT_SIZE[hierarchy],
+            lineHeight: 1.15,
+          }}
+        >
+          {slide.headline}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.bodyFamily,
+            fontWeight: fontConfig.bodyWeight,
+            fontSize: bodyFontSize(textDensity, hierarchy),
+            lineHeight: 1.4,
+            opacity: 0.9,
+          }}
+        >
+          {body}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', width: 64, height: 8, backgroundColor: colors.accent }} />
+    </div>
   )
+
+  const image = new ImageResponse(content, { width: 1080, height: 1350, fonts })
   return Buffer.from(await image.arrayBuffer())
 }
 
