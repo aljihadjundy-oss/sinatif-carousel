@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { generateStructuredContent } from '@/lib/ai-client'
+import { generateStructuredContent, AiServiceUnavailableError } from '@/lib/ai-client'
 
 export const runtime = 'nodejs'
 // Vercel's default serverless function timeout is 10s, but this route calls
@@ -176,6 +176,9 @@ export async function POST(request: Request) {
     })
   } catch (err) {
     console.error('script-writer: ai-client error', err)
+    if (err instanceof AiServiceUnavailableError) {
+      return NextResponse.json({ error: err.message }, { status: 503 })
+    }
     return NextResponse.json(
       { error: 'Script generation failed' },
       { status: 502 }
