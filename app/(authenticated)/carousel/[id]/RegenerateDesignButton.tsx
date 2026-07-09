@@ -3,14 +3,19 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+type LayoutVariant = 'minimal' | 'accent'
+
 export default function RegenerateDesignButton({
   postId,
-  variant = 'secondary',
+  buttonStyle = 'secondary',
+  initialLayoutVariant = 'minimal',
 }: {
   postId: string
-  variant?: 'primary' | 'secondary'
+  buttonStyle?: 'primary' | 'secondary'
+  initialLayoutVariant?: LayoutVariant
 }) {
   const router = useRouter()
+  const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>(initialLayoutVariant)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -21,7 +26,7 @@ export default function RegenerateDesignButton({
     const res = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post_id: postId }),
+      body: JSON.stringify({ post_id: postId, layout_variant: layoutVariant }),
     })
 
     if (!res.ok) {
@@ -41,20 +46,31 @@ export default function RegenerateDesignButton({
     'border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
 
   return (
-    <div className="flex flex-col items-start gap-2">
-      <button
-        onClick={handleClick}
-        disabled={loading}
-        className={`rounded-lg px-4 py-2 text-sm font-medium ${
-          variant === 'primary' ? primaryClasses : secondaryClasses
-        }`}
-      >
-        {loading
-          ? 'Membuat desain…'
-          : variant === 'primary'
-            ? 'Generate Design'
-            : 'Regenerate Design'}
-      </button>
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex items-center gap-2">
+        <select
+          value={layoutVariant}
+          onChange={(e) => setLayoutVariant(e.target.value as LayoutVariant)}
+          disabled={loading}
+          className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+        >
+          <option value="minimal">Minimal</option>
+          <option value="accent">Accent</option>
+        </select>
+        <button
+          onClick={handleClick}
+          disabled={loading}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            buttonStyle === 'primary' ? primaryClasses : secondaryClasses
+          }`}
+        >
+          {loading
+            ? 'Membuat desain…'
+            : buttonStyle === 'primary'
+              ? 'Generate Design'
+              : 'Regenerate Design'}
+        </button>
+      </div>
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   )

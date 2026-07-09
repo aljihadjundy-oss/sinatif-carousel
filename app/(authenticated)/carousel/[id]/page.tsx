@@ -31,7 +31,7 @@ export default async function CarouselPostPage({
   const { data: post } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, topic, status, brand_profiles(name)')
+    .select('id, topic, status, layout_variant, brand_profiles(name)')
     .eq('id', id)
     .single()
 
@@ -76,6 +76,7 @@ export default async function CarouselPostPage({
       <div className="text-sm text-gray-500 dark:text-gray-400">
         {brand?.name && <span>Brand: {brand.name} · </span>}
         Status: {post.status}
+        {hasDesign && <span> · Layout: {post.layout_variant}</span>}
       </div>
 
       <div className="space-y-3">
@@ -94,7 +95,10 @@ export default async function CarouselPostPage({
             )}
             <RegenerateDesignButton
               postId={post.id}
-              variant={hasDesign ? 'secondary' : 'primary'}
+              buttonStyle={hasDesign ? 'secondary' : 'primary'}
+              initialLayoutVariant={
+                (post.layout_variant as 'minimal' | 'accent' | null) ?? 'minimal'
+              }
             />
           </div>
         </div>
