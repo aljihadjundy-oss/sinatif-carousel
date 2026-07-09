@@ -3,6 +3,14 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { generateStructuredContent } from '@/lib/ai-client'
 
 export const runtime = 'nodejs'
+// Vercel's default serverless function timeout is 10s, but this route calls
+// generateStructuredContent() which now retries transient Gemini 503/429s
+// with backoff (see lib/ai-client.ts) — worst case is several Gemini calls
+// plus delays between them, which can exceed 10s. 60 is the maximum
+// maxDuration Vercel allows for a standard (non-Fluid-Compute) Hobby-plan
+// function; Pro/Enterprise allow more but 60 covers this route's worst case
+// with margin. https://vercel.com/docs/functions/configuring-functions/duration
+export const maxDuration = 60
 
 const SYSTEM_PROMPT =
   'You are a senior Indonesian social-media copywriter who writes Instagram carousel scripts. ' +

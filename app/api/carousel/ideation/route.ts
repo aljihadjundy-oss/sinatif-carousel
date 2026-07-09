@@ -3,6 +3,9 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { generateStructuredContent } from '@/lib/ai-client'
 
 export const runtime = 'nodejs'
+// See app/api/carousel/script-writer/route.ts for why this is set — same
+// generateStructuredContent() retry/backoff path applies here.
+export const maxDuration = 60
 
 const SYSTEM_PROMPT =
   'You are a senior Indonesian social-media strategist who turns research ' +
