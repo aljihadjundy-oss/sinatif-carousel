@@ -8,7 +8,9 @@ export default async function BrandsPage() {
   const { data: profiles } = await supabase
     .schema('carousel')
     .from('brand_profiles')
-    .select('*')
+    .select(
+      'id, name, profile_type, business_unit, tone_guideline, content_standards, target_audience_default, visual_style, created_at'
+    )
     .order('created_at', { ascending: false })
 
   return (

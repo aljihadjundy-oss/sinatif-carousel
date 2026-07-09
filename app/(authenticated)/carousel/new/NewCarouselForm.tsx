@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { BrandProfileSummary } from '@/lib/types'
@@ -306,9 +307,9 @@ export default function NewCarouselForm({ profiles }: Props) {
         </select>
         <p className="mt-1 text-xs text-gray-400">
           Don&apos;t have one?{' '}
-          <a href="/carousel/brands" className="underline">
+          <Link href="/carousel/brands" className="underline">
             Create a brand profile
-          </a>
+          </Link>
         </p>
       </div>
 
