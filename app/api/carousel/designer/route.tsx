@@ -492,6 +492,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // Gated behind DEBUG_DESIGNER rather than always-on: logs the exact raw
+  // body this route received, to compare against what
+  // RegenerateDesignButton.tsx logs it sent (same gate) when diagnosing a
+  // "design options don't visibly change anything" report — confirms
+  // whether the options ever reach this handler at all before looking any
+  // further downstream (pickColors, renderSlide, storage caching, etc).
+  if (process.env.DEBUG_DESIGNER) {
+    console.log('designer: raw request body received', JSON.stringify(body))
+  }
+
   const postId = body.post_id?.trim()
   if (!postId) {
     return NextResponse.json({ error: 'post_id is required' }, { status: 400 })
@@ -648,6 +658,16 @@ export async function POST(request: Request) {
     }
   }
 
+  // slide-N.png is a deterministic path reused on every regenerate
+  // (upsert overwrites the same object) with Supabase Storage's default
+  // Cache-Control (max-age=3600) on the returned public URL. Regenerating
+  // therefore produced new bytes that were provably correct in isolated
+  // ImageResponse tests, while the browser kept serving the previous
+  // response for that identical URL — "no visible change" despite the
+  // backend working. A per-generation cache-busting query param forces a
+  // fresh fetch every time the URL is (re)rendered client-side.
+  const cacheBustVersion = Date.now()
+
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
@@ -679,7 +699,10 @@ export async function POST(request: Request) {
         .from('carousel-assets')
         .getPublicUrl(path)
 
-      renderedSlides.push({ index: slide.index, url: publicUrl.publicUrl })
+      renderedSlides.push({
+        index: slide.index,
+        url: `${publicUrl.publicUrl}?v=${cacheBustVersion}`,
+      })
     }
   } catch (err) {
     console.error('designer: render/upload error', err)
