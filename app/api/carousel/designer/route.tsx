@@ -174,6 +174,9 @@ async function loadFontsForBrand(fontConfig: FontConfig) {
   return [...primary, ...fallbacks]
 }
 
+type LayoutVariant = 'minimal' | 'accent'
+const LAYOUT_VARIANTS: LayoutVariant[] = ['minimal', 'accent']
+
 function pickColors(visualStyle: VisualStyle | null) {
   const colors = visualStyle?.colors ? Object.values(visualStyle.colors) : []
   return {
@@ -183,17 +186,55 @@ function pickColors(visualStyle: VisualStyle | null) {
   }
 }
 
+// Slide number indicator: plain text for "minimal", a colored pill badge
+// for "accent". Shared by both variants so the numbering logic lives once.
+function slideNumberBadge(
+  slide: Slide,
+  total: number,
+  colors: { bg: string; fg: string; accent: string },
+  variant: LayoutVariant
+) {
+  if (variant === 'minimal') {
+    return (
+      <div style={{ display: 'flex', fontSize: 28, opacity: 0.7 }}>
+        {slide.index} / {total}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        backgroundColor: colors.accent,
+        color: colors.bg,
+        fontSize: 24,
+        fontWeight: 700,
+        padding: '8px 20px',
+        borderRadius: 9999,
+      }}
+    >
+      {slide.index} / {total}
+    </div>
+  )
+}
+
 async function renderSlide(
   slide: Slide,
   total: number,
   colors: { bg: string; fg: string; accent: string },
   fontConfig: FontConfig,
-  fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
+  fonts: Awaited<ReturnType<typeof loadFontsForBrand>>,
+  variant: LayoutVariant
 ) {
+  const isAccent = variant === 'accent'
+
   const image = new ImageResponse(
     (
       <div
         style={{
+          position: 'relative',
           width: '100%',
           height: '100%',
           display: 'flex',
@@ -203,12 +244,47 @@ async function renderSlide(
           color: colors.fg,
           padding: 80,
           fontFamily: fontConfig.bodyFamily,
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', fontSize: 28, opacity: 0.7 }}>
-          {slide.index} / {total}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {isAccent && (
+          // Corner accent: a simple geometric circle, partly off-canvas —
+          // satori only supports basic primitives (rect/circle/line via
+          // CSS shapes), not SVG icon libraries.
+          <div
+            style={{
+              position: 'absolute',
+              top: -140,
+              right: -140,
+              width: 320,
+              height: 320,
+              borderRadius: 9999,
+              backgroundColor: colors.accent,
+              opacity: 0.15,
+              display: 'flex',
+            }}
+          />
+        )}
+
+        {slideNumberBadge(slide, total, colors, variant)}
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: isAccent ? 32 : 24,
+          }}
+        >
+          {isAccent && (
+            <div
+              style={{
+                display: 'flex',
+                width: 120,
+                height: 6,
+                backgroundColor: colors.accent,
+              }}
+            />
+          )}
           <div
             style={{
               display: 'flex',
@@ -233,6 +309,7 @@ async function renderSlide(
             {slide.body}
           </div>
         </div>
+
         <div style={{ display: 'flex', width: 64, height: 8, backgroundColor: colors.accent }} />
       </div>
     ),
@@ -251,7 +328,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { post_id?: string }
+  let body: { post_id?: string; layout_variant?: string }
   try {
     body = await request.json()
   } catch {
@@ -263,10 +340,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'post_id is required' }, { status: 400 })
   }
 
+  if (
+    body.layout_variant !== undefined &&
+    !LAYOUT_VARIANTS.includes(body.layout_variant as LayoutVariant)
+  ) {
+    return NextResponse.json(
+      { error: `layout_variant must be one of: ${LAYOUT_VARIANTS.join(', ')}` },
+      { status: 400 }
+    )
+  }
+
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, brand_profile_id')
+    .select('id, brand_profile_id, layout_variant')
     .eq('id', postId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -277,6 +364,13 @@ export async function POST(request: Request) {
   if (!post) {
     return NextResponse.json({ error: 'Post not found' }, { status: 404 })
   }
+
+  // Falling back to the post's last-used variant (rather than always
+  // "minimal") is what makes regenerating remember the previous choice.
+  const layoutVariant: LayoutVariant =
+    (body.layout_variant as LayoutVariant | undefined) ??
+    (post.layout_variant as LayoutVariant | null) ??
+    'minimal'
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -348,7 +442,7 @@ export async function POST(request: Request) {
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
-      const png = await renderSlide(slide, total, colors, fontConfig, fonts)
+      const png = await renderSlide(slide, total, colors, fontConfig, fonts, layoutVariant)
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage
@@ -408,8 +502,8 @@ export async function POST(request: Request) {
   await supabase
     .schema('carousel')
     .from('posts')
-    .update({ status: 'designed' })
+    .update({ status: 'designed', layout_variant: layoutVariant })
     .eq('id', postId)
 
-  return NextResponse.json({ post_id: postId, slides: renderedSlides })
+  return NextResponse.json({ post_id: postId, slides: renderedSlides, layout_variant: layoutVariant })
 }
