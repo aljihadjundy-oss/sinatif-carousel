@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import RegenerateDesignButton from './RegenerateDesignButton'
 import DownloadAllButton from './DownloadAllButton'
 import SlideImage from './SlideImage'
+import EditableScript from './EditableScript'
 
 interface Slide {
   index: number
@@ -40,7 +41,7 @@ export default async function CarouselPostPage({
   const { data: scriptStage } = await supabase
     .schema('carousel')
     .from('stage_outputs')
-    .select('output_json')
+    .select('id, output_json')
     .eq('post_id', id)
     .eq('stage', 'script')
     .order('created_at', { ascending: false })
@@ -124,35 +125,23 @@ export default async function CarouselPostPage({
         )}
       </div>
 
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Script
-        </h2>
-        {script?.slides && script.slides.length > 0 ? (
-          <div className="space-y-4">
-            {script.slides.map((slide) => (
-              <div
-                key={slide.index}
-                className="bg-white rounded-xl shadow p-5 dark:bg-gray-900"
-              >
-                <p className="text-xs text-gray-400 mb-1 dark:text-gray-500">
-                  Slide {slide.index}
-                </p>
-                <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-gray-100">
-                  {slide.headline}
-                </h3>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap dark:text-gray-300">
-                  {slide.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
+      {scriptStage?.id ? (
+        <EditableScript
+          postId={post.id}
+          stageOutputId={scriptStage.id}
+          title={script?.title ?? post.topic}
+          slides={script?.slides ?? []}
+        />
+      ) : (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Script
+          </h2>
           <p className="text-gray-500 text-sm dark:text-gray-400">
             No script content available.
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
