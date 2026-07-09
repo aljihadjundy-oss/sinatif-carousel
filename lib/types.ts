@@ -5,6 +5,7 @@ export const BUSINESS_UNITS = [
   'Sinatif Academy',
   'Osiris Event',
   'Hexolution',
+  'Bedadikit.id',
   'HMAIRA Scarf',
 ] as const
 
