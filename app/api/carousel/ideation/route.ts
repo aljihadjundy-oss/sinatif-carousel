@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { generateStructuredContent, AiServiceUnavailableError } from '@/lib/ai-client'
+import { generateStructuredContentGroq, AiServiceUnavailableError } from '@/lib/ai-client'
 
 export const runtime = 'nodejs'
 // See app/api/carousel/script-writer/route.ts for why this is set — same
-// generateStructuredContent() retry/backoff path applies here.
+// generateStructuredContentGroq() retry/backoff path applies here.
 export const maxDuration = 60
 
 const SYSTEM_PROMPT =
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
   let result: unknown
   try {
-    result = await generateStructuredContent({
+    result = await generateStructuredContentGroq({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt: buildUserPrompt({
         researchText,

@@ -1,8 +1,16 @@
-// Currently using Gemini free tier for development/testing. Migrate to
-// Claude API for production — swap the implementation inside
-// generateStructuredContent(), callers remain unchanged.
+// script-writer and ideation call generateStructuredContentGroq() (Groq,
+// OpenAI-compatible endpoint) as the active provider — Gemini
+// (generateStructuredContent()) proved unreliable in production
+// (frequent 503 overload, and hangs that ate the retry budget even with
+// a per-attempt timeout). generateStructuredContent() is kept intact,
+// unused, as a documented fallback: switch a caller's import back to it
+// if Groq has its own outage, no other code changes needed since both
+// functions share the same call signature. Migrate to Claude API for
+// production is still the longer-term plan — swap whichever of these is
+// active at the time, callers remain unchanged either way.
 
 import { GoogleGenerativeAI, GoogleGenerativeAIFetchError, Schema } from '@google/generative-ai'
+import OpenAI, { APIError } from 'openai'
 
 // gemini-2.5-flash was shut down by Google on 2026-06-17 ("model ...
 // is no longer available", 404), which broke every AI-backed route.
@@ -112,6 +120,95 @@ export async function generateStructuredContent({
           timedOut
             ? `timed out after ${PER_ATTEMPT_TIMEOUT_MS}ms`
             : `returned a transient error (status ${(err as GoogleGenerativeAIFetchError).status})`
+        }, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length})`
+      )
+      await sleep(delay)
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
+  throw lastErr
+}
+
+// Groq alternative for script-writer/ideation, added because Gemini has
+// been unreliable in production (frequent 503 overload, and hangs that
+// eat the retry budget even with the AbortController timeout above).
+// Groq exposes an OpenAI-compatible /openai/v1 endpoint, so this uses the
+// `openai` SDK pointed at Groq's baseURL rather than @google/generative-ai
+// — same interface as generateStructuredContent() so callers don't need
+// to change how they call it, just which function they import.
+const GROQ_MODEL = 'llama-3.3-70b-versatile'
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
+
+// Groq's per-model "Structured Outputs" strict json_schema mode is only
+// available on a subset of models (verified via Groq's docs at
+// console.groq.com/docs/structured-outputs before writing this — not
+// assumed). response_format: { type: "json_object" } ("JSON Object Mode")
+// is the broadly-supported one instead, confirmed to work with
+// llama-3.3-70b-versatile — it guarantees valid JSON syntax but not
+// schema conformance, so `jsonSchema` is accepted here only to keep the
+// same call signature as generateStructuredContent() and isn't sent to
+// Groq. Schema shape is instead enforced the same way it always has been
+// for this app: by the system/user prompts callers already build.
+// OpenAI-compatible JSON mode also requires the word "json" to appear
+// somewhere in the messages, which every caller's SYSTEM_PROMPT already
+// satisfies ("You always reply with a single valid JSON object...").
+//
+// Groq responds far faster than Gemini in practice, so the per-attempt
+// timeout is shortened from Gemini's 8s to 5s — retry count/delays are
+// unchanged from generateStructuredContent().
+const GROQ_PER_ATTEMPT_TIMEOUT_MS = 5000
+
+function isRetryableGroqError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true
+  return err instanceof APIError && err.status !== undefined && RETRYABLE_STATUS_CODES.includes(err.status)
+}
+
+export async function generateStructuredContentGroq({
+  systemPrompt,
+  userPrompt,
+}: GenerateStructuredContentInput): Promise<object> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is not configured')
+  }
+
+  const client = new OpenAI({ apiKey, baseURL: GROQ_BASE_URL })
+
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), GROQ_PER_ATTEMPT_TIMEOUT_MS)
+    try {
+      const result = await client.chat.completions.create(
+        {
+          model: GROQ_MODEL,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        },
+        { signal: controller.signal }
+      )
+      const text = result.choices[0]?.message?.content
+      if (!text) {
+        throw new Error('Groq response had no message content')
+      }
+      return JSON.parse(text)
+    } catch (err) {
+      lastErr = err
+      const timedOut = err instanceof DOMException && err.name === 'AbortError'
+      if (!isRetryableGroqError(err) || attempt === RETRY_DELAYS_MS.length) {
+        throw timedOut || isRetryableGroqError(err) ? new AiServiceUnavailableError(err) : err
+      }
+      const delay = RETRY_DELAYS_MS[attempt]
+      console.warn(
+        `ai-client: Groq call ${
+          timedOut
+            ? `timed out after ${GROQ_PER_ATTEMPT_TIMEOUT_MS}ms`
+            : `returned a transient error (status ${(err as APIError).status})`
         }, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length})`
       )
       await sleep(delay)
