@@ -74,6 +74,10 @@ const DEFAULT_FONTS: FontConfig = {
   bodyWeight: 400,
 }
 
+// Fallback used to guarantee full glyph coverage (see loadFontsForBrand).
+const FALLBACK_FAMILY = 'Noto Sans'
+const FALLBACK_WEIGHT: FontWeight = 400
+
 async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuffer> {
   const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}&display=swap`
 
@@ -104,6 +108,16 @@ async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuff
   return fontRes.arrayBuffer()
 }
 
+// next/og (satori) only falls back across multiple font entries that share
+// the exact same declared `name` — a CSS-style font-family stack
+// ("Brand Font, Noto Sans") is NOT honored as a fallback chain. Any glyph
+// missing from every entry under that name makes satori invoke its own
+// internal default-font loader, which is the exact code path that throws
+// "Invalid URL ... noto-sans-v27-latin-regular.ttf" on Windows. Decorative/
+// script fonts (e.g. Architects Daughter) commonly lack coverage for
+// ordinary punctuation an LLM generates (✓, →, etc.), so every family here
+// gets a broad-coverage Noto Sans fallback registered under its own name to
+// make sure that internal loader is never reached, regardless of platform.
 async function loadFontsForBrand(fontConfig: FontConfig) {
   const pairs: { family: string; weight: FontWeight }[] = [
     { family: fontConfig.headlineFamily, weight: fontConfig.headlineWeight },
@@ -112,17 +126,27 @@ async function loadFontsForBrand(fontConfig: FontConfig) {
   const uniquePairs = Array.from(
     new Map(pairs.map((p) => [`${p.family}-${p.weight}`, p])).values()
   )
+  const uniqueFamilies = Array.from(new Set(pairs.map((p) => p.family)))
 
-  const loaded = await Promise.all(
+  const fallbackData = await loadGoogleFont(FALLBACK_FAMILY, FALLBACK_WEIGHT)
+
+  const primary = await Promise.all(
     uniquePairs.map(async ({ family, weight }) => ({
       name: family,
-      weight: weight as FontWeight,
+      weight,
       style: 'normal' as const,
       data: await loadGoogleFont(family, weight),
     }))
   )
 
-  return loaded
+  const fallbacks = uniqueFamilies.map((family) => ({
+    name: family,
+    weight: FALLBACK_WEIGHT,
+    style: 'normal' as const,
+    data: fallbackData,
+  }))
+
+  return [...primary, ...fallbacks]
 }
 
 function pickColors(visualStyle: VisualStyle | null) {
@@ -265,15 +289,35 @@ export async function POST(request: Request) {
   }
 
   const colors = pickColors(visualStyle)
-  const fontConfig = (brandName && BRAND_FONTS[brandName]) || DEFAULT_FONTS
+  const mappedFonts = brandName ? BRAND_FONTS[brandName] : undefined
+  if (brandName && !mappedFonts) {
+    console.warn(
+      `designer: no font mapping for brand "${brandName}" — using default fonts`
+    )
+  }
+  let fontConfig = mappedFonts ?? DEFAULT_FONTS
   const total = script.slides.length
 
   let fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
   try {
     fonts = await loadFontsForBrand(fontConfig)
   } catch (err) {
-    console.error('designer: font load error', err)
-    return NextResponse.json({ error: 'Failed to load brand fonts' }, { status: 502 })
+    console.error(
+      `designer: font load failed for brand "${brandName}" ` +
+        `(headline: ${fontConfig.headlineFamily} ${fontConfig.headlineWeight}, ` +
+        `body: ${fontConfig.bodyFamily} ${fontConfig.bodyWeight}) — falling back to Inter`,
+      err
+    )
+    try {
+      fontConfig = DEFAULT_FONTS
+      fonts = await loadFontsForBrand(fontConfig)
+    } catch (fallbackErr) {
+      console.error('designer: default font load also failed', fallbackErr)
+      return NextResponse.json(
+        { error: 'Failed to load fonts for design generation' },
+        { status: 502 }
+      )
+    }
   }
 
   const renderedSlides: { index: number; url: string }[] = []
