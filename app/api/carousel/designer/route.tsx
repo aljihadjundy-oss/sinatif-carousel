@@ -19,6 +19,112 @@ interface VisualStyle {
   colors?: Record<string, string>
 }
 
+type FontWeight = 400 | 500 | 600 | 700 | 800 | 900
+
+interface FontConfig {
+  headlineFamily: string
+  headlineWeight: FontWeight
+  bodyFamily: string
+  bodyWeight: FontWeight
+}
+
+// ImageResponse's built-in default font loader resolves a local file path
+// that breaks on Windows dev (`Invalid URL ... noto-sans-v27-latin-regular.ttf`).
+// Explicitly supplying fonts for every rendered text node avoids that loader
+// entirely, so every brand below is mapped to a real Google Fonts family.
+const BRAND_FONTS: Record<string, FontConfig> = {
+  'Sinatif Agency': {
+    headlineFamily: 'Inter',
+    headlineWeight: 600,
+    bodyFamily: 'Inter',
+    bodyWeight: 400,
+  },
+  'Sinatif Academy': {
+    headlineFamily: 'Khand',
+    headlineWeight: 700,
+    bodyFamily: 'Nunito',
+    bodyWeight: 400,
+  },
+  'Osiris Event': {
+    headlineFamily: 'Cinzel',
+    headlineWeight: 700,
+    bodyFamily: 'Poppins',
+    bodyWeight: 400,
+  },
+  Hexolution: {
+    // "Blanka" isn't on Google Fonts — fall back to a bold display sans.
+    headlineFamily: 'Archivo Black',
+    headlineWeight: 400,
+    bodyFamily: 'Inter',
+    bodyWeight: 400,
+  },
+  'Bedadikit.id': {
+    // Architects Daughter only ships a regular weight.
+    headlineFamily: 'Architects Daughter',
+    headlineWeight: 400,
+    bodyFamily: 'Architects Daughter',
+    bodyWeight: 400,
+  },
+}
+
+const DEFAULT_FONTS: FontConfig = {
+  headlineFamily: 'Inter',
+  headlineWeight: 700,
+  bodyFamily: 'Inter',
+  bodyWeight: 400,
+}
+
+async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuffer> {
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}&display=swap`
+
+  const cssRes = await fetch(cssUrl, {
+    headers: {
+      // A UA with no recognized browser token makes Google Fonts serve
+      // .ttf instead of .woff/.woff2, which is what satori (ImageResponse)
+      // needs — verified against the live API, not guessed.
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/538.1 (KHTML, like Gecko)',
+    },
+  })
+  if (!cssRes.ok) {
+    throw new Error(`Failed to load font CSS for ${family} ${weight}`)
+  }
+
+  const css = await cssRes.text()
+  const match = css.match(/src: url\(([^)]+)\) format\('(?:truetype|opentype)'\)/)
+  if (!match) {
+    throw new Error(`No truetype source found for ${family} ${weight}`)
+  }
+
+  const fontRes = await fetch(match[1])
+  if (!fontRes.ok) {
+    throw new Error(`Failed to download font file for ${family} ${weight}`)
+  }
+
+  return fontRes.arrayBuffer()
+}
+
+async function loadFontsForBrand(fontConfig: FontConfig) {
+  const pairs: { family: string; weight: FontWeight }[] = [
+    { family: fontConfig.headlineFamily, weight: fontConfig.headlineWeight },
+    { family: fontConfig.bodyFamily, weight: fontConfig.bodyWeight },
+  ]
+  const uniquePairs = Array.from(
+    new Map(pairs.map((p) => [`${p.family}-${p.weight}`, p])).values()
+  )
+
+  const loaded = await Promise.all(
+    uniquePairs.map(async ({ family, weight }) => ({
+      name: family,
+      weight: weight as FontWeight,
+      style: 'normal' as const,
+      data: await loadGoogleFont(family, weight),
+    }))
+  )
+
+  return loaded
+}
+
 function pickColors(visualStyle: VisualStyle | null) {
   const colors = visualStyle?.colors ? Object.values(visualStyle.colors) : []
   return {
@@ -31,7 +137,9 @@ function pickColors(visualStyle: VisualStyle | null) {
 async function renderSlide(
   slide: Slide,
   total: number,
-  colors: { bg: string; fg: string; accent: string }
+  colors: { bg: string; fg: string; accent: string },
+  fontConfig: FontConfig,
+  fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
 ) {
   const image = new ImageResponse(
     (
@@ -45,24 +153,41 @@ async function renderSlide(
           backgroundColor: colors.bg,
           color: colors.fg,
           padding: 80,
-          fontFamily: 'sans-serif',
+          fontFamily: fontConfig.bodyFamily,
         }}
       >
         <div style={{ display: 'flex', fontSize: 28, opacity: 0.7 }}>
           {slide.index} / {total}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ display: 'flex', fontSize: 64, fontWeight: 700, lineHeight: 1.15 }}>
+          <div
+            style={{
+              display: 'flex',
+              fontFamily: fontConfig.headlineFamily,
+              fontWeight: fontConfig.headlineWeight,
+              fontSize: 64,
+              lineHeight: 1.15,
+            }}
+          >
             {slide.headline}
           </div>
-          <div style={{ display: 'flex', fontSize: 32, lineHeight: 1.4, opacity: 0.9 }}>
+          <div
+            style={{
+              display: 'flex',
+              fontFamily: fontConfig.bodyFamily,
+              fontWeight: fontConfig.bodyWeight,
+              fontSize: 32,
+              lineHeight: 1.4,
+              opacity: 0.9,
+            }}
+          >
             {slide.body}
           </div>
         </div>
         <div style={{ display: 'flex', width: 64, height: 8, backgroundColor: colors.accent }} />
       </div>
     ),
-    { width: 1080, height: 1350 }
+    { width: 1080, height: 1350, fonts }
   )
   return Buffer.from(await image.arrayBuffer())
 }
@@ -127,23 +252,34 @@ export async function POST(request: Request) {
   }
 
   let visualStyle: VisualStyle | null = null
+  let brandName: string | null = null
   if (post.brand_profile_id) {
     const { data: brand } = await supabase
       .schema('carousel')
       .from('brand_profiles')
-      .select('visual_style')
+      .select('name, visual_style')
       .eq('id', post.brand_profile_id)
       .maybeSingle()
     visualStyle = (brand?.visual_style as VisualStyle | null) ?? null
+    brandName = brand?.name ?? null
   }
 
   const colors = pickColors(visualStyle)
+  const fontConfig = (brandName && BRAND_FONTS[brandName]) || DEFAULT_FONTS
   const total = script.slides.length
+
+  let fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
+  try {
+    fonts = await loadFontsForBrand(fontConfig)
+  } catch (err) {
+    console.error('designer: font load error', err)
+    return NextResponse.json({ error: 'Failed to load brand fonts' }, { status: 502 })
+  }
 
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of script.slides) {
-      const png = await renderSlide(slide, total, colors)
+      const png = await renderSlide(slide, total, colors, fontConfig, fonts)
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage
