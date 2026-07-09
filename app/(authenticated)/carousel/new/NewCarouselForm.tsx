@@ -31,6 +31,7 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [topic, setTopic] = useState('')
   const [audience, setAudience] = useState('')
   const [goal, setGoal] = useState('')
+  const [slideCount, setSlideCount] = useState(7)
   const [manualSlides, setManualSlides] = useState<ManualSlide[]>([
     { headline: '', body: '' },
   ])
@@ -105,6 +106,7 @@ export default function NewCarouselForm({ profiles }: Props) {
         topic,
         audience,
         goal,
+        slide_count: slideCount,
       }),
     })
 
@@ -210,6 +212,7 @@ export default function NewCarouselForm({ profiles }: Props) {
         topic: idea.title,
         idea_angle: idea.angle_description,
         research_context: researchText,
+        slide_count: slideCount,
       }),
     })
 
@@ -344,6 +347,20 @@ export default function NewCarouselForm({ profiles }: Props) {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Number of Slides
+            </label>
+            <input
+              type="number"
+              min={3}
+              max={12}
+              value={slideCount}
+              onChange={(e) => setSlideCount(Number(e.target.value))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            />
+          </div>
         </>
       )}
 
@@ -412,6 +429,20 @@ export default function NewCarouselForm({ profiles }: Props) {
               rows={10}
               placeholder="Paste the full article or research notes here…"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Number of Slides
+            </label>
+            <input
+              type="number"
+              min={3}
+              max={12}
+              value={slideCount}
+              onChange={(e) => setSlideCount(Number(e.target.value))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
             />
           </div>
 
