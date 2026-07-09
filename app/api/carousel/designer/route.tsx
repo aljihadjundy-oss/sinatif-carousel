@@ -286,7 +286,8 @@ async function renderSlide(
   logoUrl: string | null,
   brandName: string | null,
   textDensity: TextDensity,
-  hierarchy: Hierarchy
+  hierarchy: Hierarchy,
+  backgroundImageUrl: string | null
 ) {
   const isAccent = variant === 'accent'
   const icon = isAccent ? pickSlideIcon(slide.headline, slide.body, brandName) : null
@@ -309,6 +310,41 @@ async function renderSlide(
           overflow: 'hidden',
         }}
       >
+        {backgroundImageUrl && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={backgroundImageUrl}
+              alt=""
+              width={1080}
+              height={1350}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1080,
+                height: 1350,
+                objectFit: 'cover',
+              }}
+            />
+            {/* Fixed semi-transparent overlay for text readability — a
+                deliberately simple choice, not dynamic brightness
+                detection, per spec. */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1080,
+                height: 1350,
+                backgroundColor: colors.bg,
+                opacity: 0.55,
+                display: 'flex',
+              }}
+            />
+          </>
+        )}
+
         {logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -417,6 +453,7 @@ export async function POST(request: Request) {
     color_scheme?: string | null
     text_density?: string
     hierarchy?: string
+    background_image_url?: string | null
   }
   try {
     body = await request.json()
@@ -460,7 +497,9 @@ export async function POST(request: Request) {
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy')
+    .select(
+      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url'
+    )
     .eq('id', postId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -488,6 +527,10 @@ export async function POST(request: Request) {
     (body.hierarchy as Hierarchy | undefined) ??
     (post.hierarchy as Hierarchy | null) ??
     'balanced'
+  const backgroundImageUrl: string | null =
+    body.background_image_url !== undefined
+      ? body.background_image_url
+      : (post.background_image_url as string | null)
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -570,7 +613,8 @@ export async function POST(request: Request) {
         logoUrl,
         brandName,
         textDensity,
-        hierarchy
+        hierarchy,
+        backgroundImageUrl
       )
       const path = `${postId}/slide-${slide.index}.png`
 
@@ -637,6 +681,7 @@ export async function POST(request: Request) {
       color_scheme: colorScheme,
       text_density: textDensity,
       hierarchy: hierarchy,
+      background_image_url: backgroundImageUrl,
     })
     .eq('id', postId)
 
@@ -647,5 +692,6 @@ export async function POST(request: Request) {
     color_scheme: colorScheme,
     text_density: textDensity,
     hierarchy: hierarchy,
+    background_image_url: backgroundImageUrl,
   })
 }

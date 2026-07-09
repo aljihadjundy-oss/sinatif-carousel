@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
 type LayoutVariant = 'minimal' | 'accent'
 type TextDensity = 'concise' | 'standard' | 'detailed'
 type Hierarchy = 'headline_focused' | 'balanced'
+type BackgroundMode = 'solid' | 'image'
 
 interface Props {
   postId: string
@@ -14,6 +16,7 @@ interface Props {
   initialColorScheme?: string | null
   initialTextDensity?: TextDensity
   initialHierarchy?: Hierarchy
+  initialBackgroundImageUrl?: string | null
   brandColors?: Record<string, string> | null
 }
 
@@ -24,19 +27,48 @@ export default function RegenerateDesignButton({
   initialColorScheme = null,
   initialTextDensity = 'standard',
   initialHierarchy = 'balanced',
+  initialBackgroundImageUrl = null,
   brandColors = null,
 }: Props) {
   const router = useRouter()
+  const supabase = createClient()
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>(initialLayoutVariant)
   const [colorScheme, setColorScheme] = useState<string>(initialColorScheme ?? '')
   const [textDensity, setTextDensity] = useState<TextDensity>(initialTextDensity)
   const [hierarchy, setHierarchy] = useState<Hierarchy>(initialHierarchy)
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(
+    initialBackgroundImageUrl ? 'image' : 'solid'
+  )
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(
+    initialBackgroundImageUrl
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleClick() {
     setLoading(true)
     setError(null)
+
+    let effectiveBackgroundUrl = backgroundMode === 'image' ? backgroundImageUrl : null
+
+    if (backgroundMode === 'image' && backgroundFile) {
+      const ext = backgroundFile.name.split('.').pop() || 'png'
+      const path = `${postId}/background.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from('carousel-assets')
+        .upload(path, backgroundFile, { contentType: backgroundFile.type, upsert: true })
+
+      if (uploadErr) {
+        setError(`Background upload failed: ${uploadErr.message}`)
+        setLoading(false)
+        return
+      }
+
+      const { data: publicUrl } = supabase.storage.from('carousel-assets').getPublicUrl(path)
+      effectiveBackgroundUrl = publicUrl.publicUrl
+      setBackgroundImageUrl(effectiveBackgroundUrl)
+    }
 
     const res = await fetch('/api/carousel/designer', {
       method: 'POST',
@@ -47,6 +79,7 @@ export default function RegenerateDesignButton({
         color_scheme: colorScheme || null,
         text_density: textDensity,
         hierarchy: hierarchy,
+        background_image_url: effectiveBackgroundUrl,
       }),
     })
 
@@ -137,6 +170,61 @@ export default function RegenerateDesignButton({
             <option value="balanced">Balanced</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Background
+        </label>
+        <div className="flex rounded-lg border border-gray-300 p-1 dark:border-gray-700">
+          <button
+            type="button"
+            onClick={() => setBackgroundMode('solid')}
+            disabled={loading}
+            className={`flex-1 rounded-md py-1 text-xs font-medium transition-colors ${
+              backgroundMode === 'solid'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+            }`}
+          >
+            Solid Color
+          </button>
+          <button
+            type="button"
+            onClick={() => setBackgroundMode('image')}
+            disabled={loading}
+            className={`flex-1 rounded-md py-1 text-xs font-medium transition-colors ${
+              backgroundMode === 'image'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+            }`}
+          >
+            Upload Image
+          </button>
+        </div>
+
+        {backgroundMode === 'image' && (
+          <div className="mt-2 space-y-1">
+            {backgroundImageUrl && !backgroundFile && (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={backgroundImageUrl}
+                  alt="Current background"
+                  className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-gray-700"
+                />
+                <span className="text-xs text-gray-400">Current background — choose a file to replace it</span>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setBackgroundFile(e.target.files?.[0] ?? null)}
+              disabled={loading}
+              className="w-full text-sm bg-white text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:file:bg-gray-800 dark:file:text-gray-300 dark:hover:file:bg-gray-700"
+            />
+          </div>
+        )}
       </div>
 
       <button

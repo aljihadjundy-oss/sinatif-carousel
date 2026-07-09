@@ -33,7 +33,7 @@ export default async function CarouselPostPage({
     .schema('carousel')
     .from('posts')
     .select(
-      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, brand_profiles(name, visual_style)'
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, brand_profiles(name, visual_style)'
     )
     .eq('id', id)
     .single()
@@ -113,6 +113,7 @@ export default async function CarouselPostPage({
           initialHierarchy={
             (post.hierarchy as 'headline_focused' | 'balanced' | null) ?? 'balanced'
           }
+          initialBackgroundImageUrl={post.background_image_url}
           brandColors={brand?.visual_style?.colors ?? null}
         />
 
