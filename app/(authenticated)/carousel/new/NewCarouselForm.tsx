@@ -9,11 +9,17 @@ interface Props {
   profiles: BrandProfileSummary[]
 }
 
-type Mode = 'ai' | 'manual'
+type Mode = 'ai' | 'manual' | 'research'
 
 interface ManualSlide {
   headline: string
   body: string
+}
+
+interface Idea {
+  title: string
+  hook: string
+  angle_description: string
 }
 
 export default function NewCarouselForm({ profiles }: Props) {
@@ -28,6 +34,11 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [manualSlides, setManualSlides] = useState<ManualSlide[]>([
     { headline: '', body: '' },
   ])
+  const [researchText, setResearchText] = useState('')
+  const [ideas, setIdeas] = useState<Idea[] | null>(null)
+  const [ideationLoading, setIdeationLoading] = useState(false)
+  const [ideationError, setIdeationError] = useState<string | null>(null)
+  const [selectingIdea, setSelectingIdea] = useState<string | null>(null)
   const [stage, setStage] = useState<'idle' | 'script' | 'design'>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -65,6 +76,11 @@ export default function NewCarouselForm({ profiles }: Props) {
     setManualSlides((slides) =>
       slides.length > 1 ? slides.filter((_, i) => i !== index) : slides
     )
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next)
+    setError(null)
   }
 
   async function runDesignerAndRedirect(id: string) {
@@ -155,8 +171,64 @@ export default function NewCarouselForm({ profiles }: Props) {
     await runDesignerAndRedirect(post.id)
   }
 
+  async function handleGenerateIdeas() {
+    setIdeationError(null)
+    setIdeationLoading(true)
+    setIdeas(null)
+
+    const res = await fetch('/api/carousel/ideation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        research_text: researchText,
+        brand_profile_id: brandProfileId,
+      }),
+    })
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setIdeationError(json.error ?? 'Failed to generate ideas')
+      setIdeationLoading(false)
+      return
+    }
+
+    const { ideas: generatedIdeas } = await res.json()
+    setIdeas(generatedIdeas)
+    setIdeationLoading(false)
+  }
+
+  async function handleSelectIdea(idea: Idea) {
+    setSelectingIdea(idea.title)
+    setStage('script')
+    setError(null)
+
+    const scriptRes = await fetch('/api/carousel/script-writer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brand_profile_id: brandProfileId,
+        topic: idea.title,
+        idea_angle: idea.angle_description,
+        research_context: researchText,
+      }),
+    })
+
+    if (!scriptRes.ok) {
+      const json = await scriptRes.json().catch(() => ({}))
+      setError(json.error ?? 'Something went wrong')
+      setStage('idle')
+      setSelectingIdea(null)
+      return
+    }
+
+    const { id } = await scriptRes.json()
+    await runDesignerAndRedirect(id)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (mode === 'research') return
+
     setStage('script')
     setError(null)
 
@@ -172,7 +244,7 @@ export default function NewCarouselForm({ profiles }: Props) {
       <div className="flex rounded-lg border border-gray-300 p-1 dark:border-gray-700">
         <button
           type="button"
-          onClick={() => setMode('ai')}
+          onClick={() => switchMode('ai')}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
             mode === 'ai'
               ? 'bg-blue-600 text-white'
@@ -183,7 +255,7 @@ export default function NewCarouselForm({ profiles }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => setMode('manual')}
+          onClick={() => switchMode('manual')}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
             mode === 'manual'
               ? 'bg-blue-600 text-white'
@@ -191,6 +263,17 @@ export default function NewCarouselForm({ profiles }: Props) {
           }`}
         >
           Write My Own Script
+        </button>
+        <button
+          type="button"
+          onClick={() => switchMode('research')}
+          className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
+            mode === 'research'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+          }`}
+        >
+          From Research/Article
         </button>
       </div>
 
@@ -218,21 +301,23 @@ export default function NewCarouselForm({ profiles }: Props) {
         </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Topic <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          required
-          placeholder="e.g. 5 cara meningkatkan engagement Instagram"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
-        />
-      </div>
+      {mode !== 'research' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Topic <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            required
+            placeholder="e.g. 5 cara meningkatkan engagement Instagram"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+          />
+        </div>
+      )}
 
-      {mode === 'ai' ? (
+      {mode === 'ai' && (
         <>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -260,7 +345,9 @@ export default function NewCarouselForm({ profiles }: Props) {
             />
           </div>
         </>
-      ) : (
+      )}
+
+      {mode === 'manual' && (
         <div className="space-y-4">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Slides <span className="text-red-500">*</span>
@@ -312,15 +399,78 @@ export default function NewCarouselForm({ profiles }: Props) {
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {mode === 'research' && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Paste your research/article content <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={researchText}
+              onChange={(e) => setResearchText(e.target.value)}
+              required
+              rows={10}
+              placeholder="Paste the full article or research notes here…"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            />
+          </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loadingLabel}
-      </button>
+          <button
+            type="button"
+            onClick={handleGenerateIdeas}
+            disabled={ideationLoading || !researchText.trim() || !brandProfileId || loading}
+            className="w-full border border-gray-300 text-gray-700 rounded-lg py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            {ideationLoading ? 'Generating ideas…' : 'Generate Ideas'}
+          </button>
+
+          {ideationError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{ideationError}</p>
+          )}
+
+          {ideas && ideas.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Pick one angle to build the script from:
+              </p>
+              {ideas.map((idea) => (
+                <button
+                  key={idea.title}
+                  type="button"
+                  onClick={() => handleSelectIdea(idea)}
+                  disabled={loading}
+                  className="w-full text-left border border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50 dark:border-gray-800 dark:hover:border-blue-500 dark:hover:bg-blue-500/10"
+                >
+                  <p className="font-medium text-gray-900 dark:text-gray-100">
+                    {idea.title}
+                  </p>
+                  <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                    {idea.hook}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    {idea.angle_description}
+                  </p>
+                  {loading && selectingIdea === idea.title && (
+                    <p className="text-xs text-gray-400 mt-2">{loadingLabel}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {mode !== 'research' && (
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loadingLabel}
+        </button>
+      )}
     </form>
   )
 }

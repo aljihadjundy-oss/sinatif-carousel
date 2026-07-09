@@ -35,6 +35,8 @@ function buildUserPrompt(input: {
   brandName: string
   toneGuideline: string | null
   contentStandards: string | null
+  ideaAngle: string | null
+  researchContext: string | null
 }): string {
   const lines: string[] = []
   lines.push(`Brand: ${input.brandName}`)
@@ -44,6 +46,18 @@ function buildUserPrompt(input: {
   lines.push(`Topic: ${input.topic}`)
   if (input.audience) lines.push(`Target audience: ${input.audience}`)
   if (input.goal) lines.push(`Goal: ${input.goal}`)
+  if (input.ideaAngle) {
+    lines.push('')
+    lines.push(`Content angle to build this script around: ${input.ideaAngle}`)
+  }
+  if (input.researchContext) {
+    lines.push('')
+    lines.push(
+      'Source research/article — ground the script in real facts and ' +
+        'details from this text rather than generic claims:'
+    )
+    lines.push(input.researchContext)
+  }
   lines.push('')
   lines.push(
     'Write a 6–8 slide Instagram carousel script. Return ONLY this JSON shape:'
@@ -69,6 +83,8 @@ export async function POST(request: Request) {
     topic?: string
     audience?: string | null
     goal?: string | null
+    idea_angle?: string | null
+    research_context?: string | null
   }
   try {
     body = await request.json()
@@ -80,6 +96,8 @@ export async function POST(request: Request) {
   const topic = body.topic?.trim()
   const audience = body.audience?.trim() || null
   const goal = body.goal?.trim() || null
+  const ideaAngle = body.idea_angle?.trim() || null
+  const researchContext = body.research_context?.trim() || null
 
   if (!brandProfileId) {
     return NextResponse.json(
@@ -120,6 +138,8 @@ export async function POST(request: Request) {
         brandName: brand.name,
         toneGuideline: brand.tone_guideline,
         contentStandards: brand.content_standards,
+        ideaAngle,
+        researchContext,
       }),
       jsonSchema: SCRIPT_JSON_SCHEMA,
     })
