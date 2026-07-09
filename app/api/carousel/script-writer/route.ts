@@ -8,24 +8,32 @@ const SYSTEM_PROMPT =
   'You are a senior Indonesian social-media copywriter who writes Instagram carousel scripts. ' +
   'You always reply with a single valid JSON object and nothing else — no prose, no markdown fences.'
 
-const SCRIPT_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    title: { type: 'string' },
-    slides: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          index: { type: 'number' },
-          headline: { type: 'string' },
-          body: { type: 'string' },
+const MIN_SLIDE_COUNT = 3
+const MAX_SLIDE_COUNT = 12
+const DEFAULT_SLIDE_COUNT = 7
+
+function buildScriptJsonSchema(slideCount: number) {
+  return {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      slides: {
+        type: 'array',
+        minItems: slideCount,
+        maxItems: slideCount,
+        items: {
+          type: 'object',
+          properties: {
+            index: { type: 'number' },
+            headline: { type: 'string' },
+            body: { type: 'string' },
+          },
+          required: ['index', 'headline', 'body'],
         },
-        required: ['index', 'headline', 'body'],
       },
     },
-  },
-  required: ['title', 'slides'],
+    required: ['title', 'slides'],
+  }
 }
 
 function buildUserPrompt(input: {
@@ -37,6 +45,7 @@ function buildUserPrompt(input: {
   contentStandards: string | null
   ideaAngle: string | null
   researchContext: string | null
+  slideCount: number
 }): string {
   const lines: string[] = []
   lines.push(`Brand: ${input.brandName}`)
@@ -60,7 +69,7 @@ function buildUserPrompt(input: {
   }
   lines.push('')
   lines.push(
-    'Write a 6–8 slide Instagram carousel script. Return ONLY this JSON shape:'
+    `Generate exactly ${input.slideCount} slides for this Instagram carousel script. Return ONLY this JSON shape:`
   )
   lines.push(
     '{"title": string, "slides": [{"index": number, "headline": string, "body": string}]}'
@@ -85,6 +94,7 @@ export async function POST(request: Request) {
     goal?: string | null
     idea_angle?: string | null
     research_context?: string | null
+    slide_count?: number
   }
   try {
     body = await request.json()
@@ -107,6 +117,18 @@ export async function POST(request: Request) {
   }
   if (!topic) {
     return NextResponse.json({ error: 'topic is required' }, { status: 400 })
+  }
+
+  const slideCount = body.slide_count ?? DEFAULT_SLIDE_COUNT
+  if (
+    !Number.isInteger(slideCount) ||
+    slideCount < MIN_SLIDE_COUNT ||
+    slideCount > MAX_SLIDE_COUNT
+  ) {
+    return NextResponse.json(
+      { error: `slide_count must be an integer between ${MIN_SLIDE_COUNT} and ${MAX_SLIDE_COUNT}` },
+      { status: 400 }
+    )
   }
 
   const { data: brand, error: brandErr } = await supabase
@@ -140,8 +162,9 @@ export async function POST(request: Request) {
         contentStandards: brand.content_standards,
         ideaAngle,
         researchContext,
+        slideCount,
       }),
-      jsonSchema: SCRIPT_JSON_SCHEMA,
+      jsonSchema: buildScriptJsonSchema(slideCount),
     })
   } catch (err) {
     console.error('script-writer: ai-client error', err)
