@@ -341,6 +341,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Confirms the request is actually authenticated (not silently running
+  // as anon) when diagnosing storage RLS failures — cheap enough to leave
+  // in permanently.
+  console.log(`designer: request from user ${user.id}`)
+
   let body: { post_id?: string; layout_variant?: string }
   try {
     body = await request.json()
