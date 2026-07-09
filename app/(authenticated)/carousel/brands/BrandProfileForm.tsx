@@ -3,24 +3,64 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { BUSINESS_UNITS, ProfileType } from '@/lib/types'
+import { BUSINESS_UNITS, BrandProfile, ProfileType } from '@/lib/types'
 
-export default function BrandProfileForm() {
+interface Props {
+  existingProfile?: BrandProfile | null
+  onSaved?: () => void
+  onCancel?: () => void
+}
+
+export default function BrandProfileForm({ existingProfile, onSaved, onCancel }: Props) {
   const router = useRouter()
   const supabase = createClient()
+  const isEditing = !!existingProfile
 
-  const [name, setName] = useState('')
-  const [profileType, setProfileType] = useState<ProfileType>('internal_bu')
-  const [businessUnit, setBusinessUnit] = useState<(typeof BUSINESS_UNITS)[number]>(
-    BUSINESS_UNITS[0]
+  const [name, setName] = useState(existingProfile?.name ?? '')
+  const [profileType, setProfileType] = useState<ProfileType>(
+    existingProfile?.profile_type ?? 'internal_bu'
   )
-  const [toneGuideline, setToneGuideline] = useState('')
-  const [contentStandards, setContentStandards] = useState('')
-  const [targetAudience, setTargetAudience] = useState('')
+  const [businessUnit, setBusinessUnit] = useState<(typeof BUSINESS_UNITS)[number]>(
+    existingProfile?.business_unit ?? BUSINESS_UNITS[0]
+  )
+  const [toneGuideline, setToneGuideline] = useState(existingProfile?.tone_guideline ?? '')
+  const [contentStandards, setContentStandards] = useState(
+    existingProfile?.content_standards ?? ''
+  )
+  const [targetAudience, setTargetAudience] = useState(
+    existingProfile?.target_audience_default ?? ''
+  )
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoInputKey, setLogoInputKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const currentLogoUrl = existingProfile?.visual_style?.logo_url ?? null
+
+  function resetFieldsForCreate() {
+    setName('')
+    setToneGuideline('')
+    setContentStandards('')
+    setTargetAudience('')
+    setLogoFile(null)
+    setLogoInputKey((k) => k + 1)
+  }
+
+  async function uploadLogoAndGetUrl(profileId: string): Promise<string> {
+    const path = `logos/${profileId}.png`
+    const { error: uploadErr } = await supabase.storage
+      .from('carousel-assets')
+      .upload(path, logoFile as File, {
+        contentType: (logoFile as File).type,
+        upsert: true,
+      })
+    if (uploadErr) throw uploadErr
+
+    const { data: publicUrl } = supabase.storage
+      .from('carousel-assets')
+      .getPublicUrl(path)
+    return publicUrl.publicUrl
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,53 +77,66 @@ export default function BrandProfileForm() {
     }
 
     const payload: Record<string, unknown> = {
-      user_id: user.id,
       name,
       profile_type: profileType,
       tone_guideline: toneGuideline || null,
       content_standards: contentStandards || null,
       target_audience_default: targetAudience || null,
-    }
-    if (profileType === 'internal_bu') payload.business_unit = businessUnit
-
-    const { data: profile, error: dbErr } = await supabase
-      .schema('carousel')
-      .from('brand_profiles')
-      .insert(payload)
-      .select('id')
-      .single()
-
-    if (dbErr || !profile) {
-      setError(dbErr?.message ?? 'Failed to create profile')
-      setLoading(false)
-      return
+      business_unit: profileType === 'internal_bu' ? businessUnit : null,
     }
 
-    if (logoFile) {
-      const path = `logos/${profile.id}.png`
-      const { error: uploadErr } = await supabase.storage
-        .from('carousel-assets')
-        .upload(path, logoFile, { contentType: logoFile.type, upsert: true })
+    let profileId = existingProfile?.id ?? null
 
-      if (uploadErr) {
-        setError(`Profile created, but logo upload failed: ${uploadErr.message}`)
-        setLoading(false)
-        router.refresh()
-        return
-      }
-
-      const { data: publicUrl } = supabase.storage
-        .from('carousel-assets')
-        .getPublicUrl(path)
-
-      const { error: visualStyleErr } = await supabase
+    if (isEditing && profileId) {
+      const { error: updateErr } = await supabase
         .schema('carousel')
         .from('brand_profiles')
-        .update({ visual_style: { logo_url: publicUrl.publicUrl } })
-        .eq('id', profile.id)
+        .update(payload)
+        .eq('id', profileId)
 
-      if (visualStyleErr) {
-        setError(`Profile created, but saving logo URL failed: ${visualStyleErr.message}`)
+      if (updateErr) {
+        setError(updateErr.message)
+        setLoading(false)
+        return
+      }
+    } else {
+      payload.user_id = user.id
+      const { data: created, error: insertErr } = await supabase
+        .schema('carousel')
+        .from('brand_profiles')
+        .insert(payload)
+        .select('id')
+        .single()
+
+      if (insertErr || !created) {
+        setError(insertErr?.message ?? 'Failed to create profile')
+        setLoading(false)
+        return
+      }
+      profileId = created.id
+    }
+
+    if (logoFile && profileId) {
+      try {
+        const logoUrl = await uploadLogoAndGetUrl(profileId)
+        const { error: visualStyleErr } = await supabase
+          .schema('carousel')
+          .from('brand_profiles')
+          .update({
+            visual_style: { ...(existingProfile?.visual_style ?? {}), logo_url: logoUrl },
+          })
+          .eq('id', profileId)
+
+        if (visualStyleErr) {
+          setError(`Saved, but logo URL update failed: ${visualStyleErr.message}`)
+          setLoading(false)
+          router.refresh()
+          return
+        }
+      } catch (err) {
+        setError(
+          `Saved, but logo upload failed: ${err instanceof Error ? err.message : 'unknown error'}`
+        )
         setLoading(false)
         router.refresh()
         return
@@ -91,13 +144,9 @@ export default function BrandProfileForm() {
     }
 
     router.refresh()
-    setName('')
-    setToneGuideline('')
-    setContentStandards('')
-    setTargetAudience('')
-    setLogoFile(null)
-    setLogoInputKey((k) => k + 1)
+    if (!isEditing) resetFieldsForCreate()
     setLoading(false)
+    onSaved?.()
   }
 
   return (
@@ -196,6 +245,17 @@ export default function BrandProfileForm() {
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Logo
         </label>
+        {currentLogoUrl && !logoFile && (
+          <div className="mb-2 flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={currentLogoUrl}
+              alt="Current logo"
+              className="w-10 h-10 object-contain rounded border border-gray-200 dark:border-gray-700"
+            />
+            <span className="text-xs text-gray-400">Current logo — choose a file to replace it</span>
+          </div>
+        )}
         <input
           key={logoInputKey}
           type="file"
@@ -208,13 +268,25 @@ export default function BrandProfileForm() {
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="bg-blue-600 text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? 'Saving…' : 'Create Profile'}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-blue-600 text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? 'Saving…' : isEditing ? 'Save Changes' : 'Create Profile'}
+        </button>
+        {isEditing && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="border border-gray-300 text-gray-700 rounded-lg px-5 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   )
 }
