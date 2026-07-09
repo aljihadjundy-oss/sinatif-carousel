@@ -1,3 +1,5 @@
+import { readFile } from 'fs/promises'
+import path from 'path'
 import { NextResponse } from 'next/server'
 import { ImageResponse } from 'next/og'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -31,7 +33,9 @@ interface FontConfig {
 // ImageResponse's built-in default font loader resolves a local file path
 // that breaks on Windows dev (`Invalid URL ... noto-sans-v27-latin-regular.ttf`).
 // Explicitly supplying fonts for every rendered text node avoids that loader
-// entirely, so every brand below is mapped to a real Google Fonts family.
+// entirely. Font files are bundled in public/fonts/ (see FONT_FILES below)
+// instead of fetched from Google Fonts at request time, so rendering never
+// depends on the runtime's network reaching fonts.googleapis.com.
 const BRAND_FONTS: Record<string, FontConfig> = {
   'Sinatif Agency': {
     headlineFamily: 'Inter',
@@ -78,34 +82,53 @@ const DEFAULT_FONTS: FontConfig = {
 const FALLBACK_FAMILY = 'Noto Sans'
 const FALLBACK_WEIGHT: FontWeight = 400
 
-async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuffer> {
-  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}&display=swap`
+// Bundled once (downloaded from Google Fonts' raw .ttf endpoints, see PR)
+// into public/fonts/ so rendering never depends on a live fetch to
+// fonts.googleapis.com/fonts.gstatic.com at request time. Every
+// (family, weight) pair used anywhere in BRAND_FONTS, DEFAULT_FONTS, or the
+// fallback must have an entry here.
+const FONT_FILES: Record<string, string> = {
+  'Inter-400': 'inter-400.ttf',
+  'Inter-600': 'inter-600.ttf',
+  'Inter-700': 'inter-700.ttf',
+  'Khand-700': 'khand-700.ttf',
+  'Nunito-400': 'nunito-400.ttf',
+  'Cinzel-700': 'cinzel-700.ttf',
+  'Poppins-400': 'poppins-400.ttf',
+  'Archivo Black-400': 'archivo-black-400.ttf',
+  'Architects Daughter-400': 'architects-daughter-400.ttf',
+  'Noto Sans-400': 'noto-sans-400.ttf',
+}
 
-  const cssRes = await fetch(cssUrl, {
-    headers: {
-      // A UA with no recognized browser token makes Google Fonts serve
-      // .ttf instead of .woff/.woff2, which is what satori (ImageResponse)
-      // needs — verified against the live API, not guessed.
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/538.1 (KHTML, like Gecko)',
-    },
-  })
-  if (!cssRes.ok) {
-    throw new Error(`Failed to load font CSS for ${family} ${weight}`)
+const fontFileCache = new Map<string, ArrayBuffer>()
+
+async function loadLocalFont(family: string, weight: number): Promise<ArrayBuffer> {
+  const key = `${family}-${weight}`
+  const cached = fontFileCache.get(key)
+  if (cached) return cached
+
+  const filename = FONT_FILES[key]
+  if (!filename) {
+    console.error(`designer: no bundled font file registered for ${key}`)
+    throw new Error(`No bundled font file for ${family} ${weight}`)
   }
 
-  const css = await cssRes.text()
-  const match = css.match(/src: url\(([^)]+)\) format\('(?:truetype|opentype)'\)/)
-  if (!match) {
-    throw new Error(`No truetype source found for ${family} ${weight}`)
+  const filePath = path.join(process.cwd(), 'public', 'fonts', filename)
+  try {
+    const buffer = await readFile(filePath)
+    const data = buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength
+    )
+    fontFileCache.set(key, data)
+    return data
+  } catch (err) {
+    console.error(
+      `designer: failed to read bundled font file "${filePath}" for ${key}`,
+      err
+    )
+    throw new Error(`Failed to read bundled font file for ${family} ${weight}`)
   }
-
-  const fontRes = await fetch(match[1])
-  if (!fontRes.ok) {
-    throw new Error(`Failed to download font file for ${family} ${weight}`)
-  }
-
-  return fontRes.arrayBuffer()
 }
 
 // next/og (satori) only falls back across multiple font entries that share
@@ -128,14 +151,14 @@ async function loadFontsForBrand(fontConfig: FontConfig) {
   )
   const uniqueFamilies = Array.from(new Set(pairs.map((p) => p.family)))
 
-  const fallbackData = await loadGoogleFont(FALLBACK_FAMILY, FALLBACK_WEIGHT)
+  const fallbackData = await loadLocalFont(FALLBACK_FAMILY, FALLBACK_WEIGHT)
 
   const primary = await Promise.all(
     uniquePairs.map(async ({ family, weight }) => ({
       name: family,
       weight,
       style: 'normal' as const,
-      data: await loadGoogleFont(family, weight),
+      data: await loadLocalFont(family, weight),
     }))
   )
 
