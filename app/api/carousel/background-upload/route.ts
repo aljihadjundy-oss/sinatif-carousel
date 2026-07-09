@@ -13,18 +13,23 @@ export const runtime = 'nodejs'
 // .rotate() with no arguments auto-orients based on EXIF and bakes the
 // rotation into the pixels, then strips the orientation tag — verified
 // this produces a physically-rotated image with no residual EXIF
-// orientation left for Satori to (still) ignore.
+// orientation left for Satori to (still) ignore. Applied first, before
+// the resize/crop below, so orientation is corrected on the pixels that
+// then get cropped — cropping before rotating would crop the wrong edges
+// for any photo that isn't already right-side-up.
 //
-// Uploaded phone photos were landing in storage 10-15x larger
-// (~910KB) than the solid-color slide renders they get composited
-// with (~40-80KB), since they were stored byte-for-byte as uploaded.
-// The designer route only ever displays this image downscaled into a
-// 1080x1350 slide (objectFit: cover), so anything wider than 1080px
-// is wasted storage — resizing to max width 1080 (no upscaling of
-// smaller images) and re-encoding as JPEG at 80% quality shrinks
-// storage cost with no visible quality loss at the render size it's
-// actually used at.
-const MAX_WIDTH = 1080
+// Every slide is a fixed 1080x1350 (4:5) canvas. Satori's CSS support is
+// limited enough (discovered earlier this session) that relying on its
+// objectFit for arbitrary source aspect ratios is fragile — instead the
+// upload itself is resized+cropped server-side with sharp so the stored
+// object is ALWAYS exactly 1080x1350, and the designer route can just
+// embed it with no fit logic of its own. `fit: 'cover'` scales the image
+// up or down (upscaling small images too, unlike the old
+// withoutEnlargement-guarded max-width resize) so it fully fills the
+// frame with no empty borders, then crops to the target aspect ratio
+// centered on the image — no stretching, no distortion, no repeating.
+const TARGET_WIDTH = 1080
+const TARGET_HEIGHT = 1350
 const JPEG_QUALITY = 80
 
 export async function POST(request: Request) {
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
     const inputBuffer = Buffer.from(await file.arrayBuffer())
     normalized = await sharp(inputBuffer)
       .rotate()
-      .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+      .resize(TARGET_WIDTH, TARGET_HEIGHT, { fit: 'cover', position: 'center' })
       .jpeg({ quality: JPEG_QUALITY })
       .toBuffer()
   } catch (err) {
