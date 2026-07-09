@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
+import { ICON_NAMES, IconName, LucideIcon } from '@/lib/icons'
 
 type LayoutVariant = 'minimal' | 'accent'
 type TextDensity = 'concise' | 'standard' | 'detailed'
 type Hierarchy = 'headline_focused' | 'balanced'
 type BackgroundMode = 'solid' | 'image'
+type IconSelection = 'auto' | 'none' | IconName
 
 interface Props {
   postId: string
@@ -17,6 +18,7 @@ interface Props {
   initialTextDensity?: TextDensity
   initialHierarchy?: Hierarchy
   initialBackgroundImageUrl?: string | null
+  initialIconName?: IconSelection
   brandColors?: Record<string, string> | null
 }
 
@@ -28,14 +30,15 @@ export default function RegenerateDesignButton({
   initialTextDensity = 'standard',
   initialHierarchy = 'balanced',
   initialBackgroundImageUrl = null,
+  initialIconName = 'auto',
   brandColors = null,
 }: Props) {
   const router = useRouter()
-  const supabase = createClient()
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>(initialLayoutVariant)
   const [colorScheme, setColorScheme] = useState<string>(initialColorScheme ?? '')
   const [textDensity, setTextDensity] = useState<TextDensity>(initialTextDensity)
   const [hierarchy, setHierarchy] = useState<Hierarchy>(initialHierarchy)
+  const [iconSelection, setIconSelection] = useState<IconSelection>(initialIconName)
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(
     initialBackgroundImageUrl ? 'image' : 'solid'
   )
@@ -44,6 +47,7 @@ export default function RegenerateDesignButton({
     initialBackgroundImageUrl
   )
   const [loading, setLoading] = useState(false)
+  const [loadingLabel, setLoadingLabel] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleClick() {
@@ -53,23 +57,29 @@ export default function RegenerateDesignButton({
     let effectiveBackgroundUrl = backgroundMode === 'image' ? backgroundImageUrl : null
 
     if (backgroundMode === 'image' && backgroundFile) {
-      const ext = backgroundFile.name.split('.').pop() || 'png'
-      const path = `${postId}/background.${ext}`
-      const { error: uploadErr } = await supabase.storage
-        .from('carousel-assets')
-        .upload(path, backgroundFile, { contentType: backgroundFile.type, upsert: true })
+      setLoadingLabel('Mengunggah background…')
+      const formData = new FormData()
+      formData.append('post_id', postId)
+      formData.append('file', backgroundFile)
 
-      if (uploadErr) {
-        setError(`Background upload failed: ${uploadErr.message}`)
+      const uploadRes = await fetch('/api/carousel/background-upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadRes.ok) {
+        const json = await uploadRes.json().catch(() => ({}))
+        setError(json.error ?? 'Background upload failed')
         setLoading(false)
         return
       }
 
-      const { data: publicUrl } = supabase.storage.from('carousel-assets').getPublicUrl(path)
-      effectiveBackgroundUrl = publicUrl.publicUrl
-      setBackgroundImageUrl(effectiveBackgroundUrl)
+      const { url } = await uploadRes.json()
+      effectiveBackgroundUrl = url
+      setBackgroundImageUrl(url)
     }
 
+    setLoadingLabel('Membuat desain…')
     const res = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -80,6 +90,7 @@ export default function RegenerateDesignButton({
         text_density: textDensity,
         hierarchy: hierarchy,
         background_image_url: effectiveBackgroundUrl,
+        icon_name: iconSelection === 'auto' ? null : iconSelection,
       }),
     })
 
@@ -174,6 +185,36 @@ export default function RegenerateDesignButton({
 
       <div>
         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Icon (accent layout only)
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {(['auto', 'none', ...ICON_NAMES] as IconSelection[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setIconSelection(option)}
+              disabled={loading}
+              title={option}
+              className={`flex items-center justify-center w-9 h-9 rounded-lg border text-xs font-medium disabled:opacity-50 ${
+                iconSelection === option
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-500/10 dark:text-blue-400'
+                  : 'border-gray-300 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800'
+              }`}
+            >
+              {option === 'auto' ? (
+                'Auto'
+              ) : option === 'none' ? (
+                'None'
+              ) : (
+                <LucideIcon name={option} size={18} strokeWidth={2} />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
           Background
         </label>
         <div className="flex rounded-lg border border-gray-300 p-1 dark:border-gray-700">
@@ -235,7 +276,7 @@ export default function RegenerateDesignButton({
         }`}
       >
         {loading
-          ? 'Membuat desain…'
+          ? loadingLabel || 'Membuat desain…'
           : buttonStyle === 'primary'
             ? 'Generate Design'
             : 'Regenerate Design'}
