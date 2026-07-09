@@ -195,14 +195,14 @@ export default function NewCarouselForm({ profiles }: Props) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Brand Profile <span className="text-red-500">*</span>
         </label>
         <select
           value={brandProfileId}
           onChange={(e) => setBrandProfileId(e.target.value)}
           required
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         >
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
@@ -219,7 +219,7 @@ export default function NewCarouselForm({ profiles }: Props) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Topic <span className="text-red-500">*</span>
         </label>
         <input
@@ -228,14 +228,14 @@ export default function NewCarouselForm({ profiles }: Props) {
           onChange={(e) => setTopic(e.target.value)}
           required
           placeholder="e.g. 5 cara meningkatkan engagement Instagram"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
         />
       </div>
 
       {mode === 'ai' ? (
         <>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Target Audience
             </label>
             <input
@@ -243,12 +243,12 @@ export default function NewCarouselForm({ profiles }: Props) {
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
               placeholder="e.g. UMKM yang ingin scale digital marketing"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Goal
             </label>
             <input
@@ -256,13 +256,13 @@ export default function NewCarouselForm({ profiles }: Props) {
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="e.g. Educate, drive DM inquiries"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
         </>
       ) : (
         <div className="space-y-4">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Slides <span className="text-red-500">*</span>
           </label>
 
@@ -290,14 +290,14 @@ export default function NewCarouselForm({ profiles }: Props) {
                 onChange={(e) => updateManualSlide(i, 'headline', e.target.value)}
                 required
                 placeholder="Headline"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
               />
               <textarea
                 value={slide.body}
                 onChange={(e) => updateManualSlide(i, 'body', e.target.value)}
                 rows={3}
                 placeholder="Body"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
               />
             </div>
           ))}

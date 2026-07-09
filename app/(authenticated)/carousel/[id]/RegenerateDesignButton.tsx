@@ -52,7 +52,7 @@ export default function RegenerateDesignButton({
           value={layoutVariant}
           onChange={(e) => setLayoutVariant(e.target.value as LayoutVariant)}
           disabled={loading}
-          className="border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+          className="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
         >
           <option value="minimal">Minimal</option>
           <option value="accent">Accent</option>
