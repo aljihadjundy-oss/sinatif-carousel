@@ -1,12 +1,32 @@
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { generateStructuredContent } from '@/lib/ai-client'
 
 export const runtime = 'nodejs'
 
 const SYSTEM_PROMPT =
   'You are a senior Indonesian social-media copywriter who writes Instagram carousel scripts. ' +
   'You always reply with a single valid JSON object and nothing else — no prose, no markdown fences.'
+
+const SCRIPT_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    slides: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'number' },
+          headline: { type: 'string' },
+          body: { type: 'string' },
+        },
+        required: ['index', 'headline', 'body'],
+      },
+    },
+  },
+  required: ['title', 'slides'],
+}
 
 function buildUserPrompt(input: {
   topic: string
@@ -88,47 +108,22 @@ export async function POST(request: Request) {
     )
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY is not configured' },
-      { status: 500 }
-    )
-  }
-
-  const client = new Anthropic({ apiKey })
-
   let script: unknown
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: buildUserPrompt({
-            topic,
-            audience,
-            goal,
-            brandName: brand.name,
-            toneGuideline: brand.tone_guideline,
-            contentStandards: brand.content_standards,
-          }),
-        },
-      ],
+    script = await generateStructuredContent({
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: buildUserPrompt({
+        topic,
+        audience,
+        goal,
+        brandName: brand.name,
+        toneGuideline: brand.tone_guideline,
+        contentStandards: brand.content_standards,
+      }),
+      jsonSchema: SCRIPT_JSON_SCHEMA,
     })
-
-    const textBlock = msg.content.find((b) => b.type === 'text')
-    const text = textBlock && textBlock.type === 'text' ? textBlock.text : ''
-
-    try {
-      script = JSON.parse(text)
-    } catch {
-      script = { raw: text }
-    }
   } catch (err) {
-    console.error('script-writer: anthropic error', err)
+    console.error('script-writer: ai-client error', err)
     return NextResponse.json(
       { error: 'Script generation failed' },
       { status: 502 }
