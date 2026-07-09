@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { BrandProfileSummary } from '@/lib/types'
 import NewCarouselForm from './NewCarouselForm'
@@ -23,9 +24,9 @@ export default async function NewCarouselPage() {
       {summary.length === 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:border-yellow-500/30 dark:text-yellow-400">
           You need at least one{' '}
-          <a href="/carousel/brands" className="underline font-medium">
+          <Link href="/carousel/brands" className="underline font-medium">
             brand profile
-          </a>{' '}
+          </Link>{' '}
           before creating a carousel post.
         </div>
       ) : (

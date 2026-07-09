@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import RegenerateDesignButton from './RegenerateDesignButton'
 import { IconName } from '@/lib/icons'
@@ -72,12 +73,12 @@ export default async function CarouselPostPage({
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           {script?.title ?? post.topic}
         </h1>
-        <a
+        <Link
           href="/carousel/new"
           className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
         >
           ← New Carousel
-        </a>
+        </Link>
       </div>
 
       <div className="text-sm text-gray-500 dark:text-gray-400">
