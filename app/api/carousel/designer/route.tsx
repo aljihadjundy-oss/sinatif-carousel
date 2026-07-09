@@ -123,8 +123,10 @@ async function loadLocalFont(family: string, weight: number): Promise<ArrayBuffe
     fontFileCache.set(key, data)
     return data
   } catch (err) {
+    const code = err instanceof Error && 'code' in err ? (err as NodeJS.ErrnoException).code : undefined
     console.error(
-      `designer: failed to read bundled font file "${filePath}" for ${key}`,
+      `designer: failed to read bundled font file for ${key} — ` +
+        `code=${code ?? 'unknown'} cwd=${process.cwd()} resolvedPath="${filePath}"`,
       err
     )
     throw new Error(`Failed to read bundled font file for ${family} ${weight}`)
