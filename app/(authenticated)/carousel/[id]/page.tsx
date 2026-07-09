@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import RegenerateDesignButton from './RegenerateDesignButton'
+import { IconName } from '@/lib/icons'
 import DownloadAllButton from './DownloadAllButton'
 import SlideImage from './SlideImage'
 import EditableScript from './EditableScript'
@@ -33,7 +34,7 @@ export default async function CarouselPostPage({
     .schema('carousel')
     .from('posts')
     .select(
-      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, brand_profiles(name, visual_style)'
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, brand_profiles(name, visual_style)'
     )
     .eq('id', id)
     .single()
@@ -114,6 +115,9 @@ export default async function CarouselPostPage({
             (post.hierarchy as 'headline_focused' | 'balanced' | null) ?? 'balanced'
           }
           initialBackgroundImageUrl={post.background_image_url}
+          initialIconName={
+            (post.icon_name as IconName | 'none' | null) ?? 'auto'
+          }
           brandColors={brand?.visual_style?.colors ?? null}
         />
 

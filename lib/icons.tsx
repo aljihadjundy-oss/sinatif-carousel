@@ -19,6 +19,14 @@ export type IconName =
   | 'CheckCircle'
   | 'ArrowRight'
 
+export const ICON_NAMES: IconName[] = [
+  'TrendingUp',
+  'Target',
+  'Lightbulb',
+  'CheckCircle',
+  'ArrowRight',
+]
+
 type IconNode = [string, Record<string, string>][]
 
 const ICON_NODES: Record<IconName, IconNode> = {

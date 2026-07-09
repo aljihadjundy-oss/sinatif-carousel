@@ -3,7 +3,7 @@ import path from 'path'
 import { NextResponse } from 'next/server'
 import { ImageResponse } from 'next/og'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { LucideIcon, pickSlideIcon } from '@/lib/icons'
+import { ICON_NAMES, IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
 
 export const runtime = 'nodejs'
 
@@ -287,11 +287,23 @@ async function renderSlide(
   brandName: string | null,
   textDensity: TextDensity,
   hierarchy: Hierarchy,
-  backgroundImageUrl: string | null
+  backgroundImageUrl: string | null,
+  iconChoice: IconName | 'none' | null
 ) {
   const isAccent = variant === 'accent'
-  const icon = isAccent ? pickSlideIcon(slide.headline, slide.body, brandName) : null
+  const icon = isAccent
+    ? iconChoice === 'none'
+      ? null
+      : (iconChoice as IconName | null) ?? pickSlideIcon(slide.headline, slide.body, brandName)
+    : null
   const body = applyTextDensity(slide.body, textDensity)
+  const hasBackgroundImage = !!backgroundImageUrl
+  // Text always renders over a dark scrim when there's a background photo,
+  // regardless of the brand's chosen fg color — the prior fixed-opacity
+  // overlay alone proved insufficient for real photos (verified with an
+  // actual EXIF-rotated test photo, not the earlier synthetic solid-color
+  // test image).
+  const textColor = hasBackgroundImage ? '#FFFFFF' : colors.fg
 
   const image = new ImageResponse(
     (
@@ -304,7 +316,7 @@ async function renderSlide(
           flexDirection: 'column',
           justifyContent: 'space-between',
           backgroundColor: colors.bg,
-          color: colors.fg,
+          color: textColor,
           padding: 80,
           fontFamily: fontConfig.bodyFamily,
           overflow: 'hidden',
@@ -327,9 +339,11 @@ async function renderSlide(
                 objectFit: 'cover',
               }}
             />
-            {/* Fixed semi-transparent overlay for text readability — a
-                deliberately simple choice, not dynamic brightness
-                detection, per spec. */}
+            {/* Whole-image darkening tint — strengthened from the earlier
+                fixed opacity (0.55 → 0.7, always black rather than the
+                brand bg color) plus the dedicated text scrim below it,
+                per spec: not dynamic brightness detection, just a
+                stronger fixed treatment verified against a real photo. */}
             <div
               style={{
                 position: 'absolute',
@@ -337,8 +351,8 @@ async function renderSlide(
                 left: 0,
                 width: 1080,
                 height: 1350,
-                backgroundColor: colors.bg,
-                opacity: 0.55,
+                backgroundColor: '#000000',
+                opacity: 0.7,
                 display: 'flex',
               }}
             />
@@ -382,6 +396,14 @@ async function renderSlide(
             display: 'flex',
             flexDirection: 'column',
             gap: isAccent ? 32 : 24,
+            ...(hasBackgroundImage
+              ? {
+                  backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                  padding: 32,
+                  borderRadius: 16,
+                  margin: -32,
+                }
+              : {}),
           }}
         >
           {isAccent && icon && (
@@ -454,6 +476,7 @@ export async function POST(request: Request) {
     text_density?: string
     hierarchy?: string
     background_image_url?: string | null
+    icon_name?: string | null
   }
   try {
     body = await request.json()
@@ -493,12 +516,23 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  if (
+    body.icon_name !== undefined &&
+    body.icon_name !== null &&
+    body.icon_name !== 'none' &&
+    !ICON_NAMES.includes(body.icon_name as IconName)
+  ) {
+    return NextResponse.json(
+      { error: `icon_name must be "none" or one of: ${ICON_NAMES.join(', ')}` },
+      { status: 400 }
+    )
+  }
 
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
     .select(
-      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url'
+      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name'
     )
     .eq('id', postId)
     .eq('user_id', user.id)
@@ -531,6 +565,12 @@ export async function POST(request: Request) {
     body.background_image_url !== undefined
       ? body.background_image_url
       : (post.background_image_url as string | null)
+  // null = auto keyword-matched per slide (unchanged default behavior),
+  // 'none' = never show an icon, an IconName = fixed icon on every slide.
+  const iconChoice: IconName | 'none' | null =
+    body.icon_name !== undefined
+      ? (body.icon_name as IconName | 'none' | null)
+      : (post.icon_name as IconName | 'none' | null)
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -614,7 +654,8 @@ export async function POST(request: Request) {
         brandName,
         textDensity,
         hierarchy,
-        backgroundImageUrl
+        backgroundImageUrl,
+        iconChoice
       )
       const path = `${postId}/slide-${slide.index}.png`
 
@@ -682,6 +723,7 @@ export async function POST(request: Request) {
       text_density: textDensity,
       hierarchy: hierarchy,
       background_image_url: backgroundImageUrl,
+      icon_name: iconChoice,
     })
     .eq('id', postId)
 
