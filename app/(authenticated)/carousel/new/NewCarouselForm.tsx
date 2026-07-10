@@ -305,7 +305,7 @@ export default function NewCarouselForm({ profiles }: Props) {
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Don&apos;t have one?{' '}
           <Link href="/carousel/brands" className="underline">
             Create a brand profile
@@ -324,7 +324,7 @@ export default function NewCarouselForm({ profiles }: Props) {
             onChange={(e) => setTopic(e.target.value)}
             required
             placeholder="e.g. 5 cara meningkatkan engagement Instagram"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
       )}
@@ -340,7 +340,7 @@ export default function NewCarouselForm({ profiles }: Props) {
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
               placeholder="e.g. UMKM yang ingin scale digital marketing"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
 
@@ -353,7 +353,7 @@ export default function NewCarouselForm({ profiles }: Props) {
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="e.g. Educate, drive DM inquiries"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
 
@@ -385,12 +385,12 @@ export default function NewCarouselForm({ profiles }: Props) {
               className="border border-gray-200 rounded-lg p-4 space-y-3 dark:border-gray-800"
             >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-400">Slide {i + 1}</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Slide {i + 1}</p>
                 {manualSlides.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeManualSlide(i)}
-                    className="text-gray-400 hover:text-red-600 text-sm leading-none"
+                    className="text-gray-500 hover:text-red-600 text-sm leading-none dark:text-gray-400"
                     aria-label={`Remove slide ${i + 1}`}
                   >
                     ×
@@ -403,14 +403,14 @@ export default function NewCarouselForm({ profiles }: Props) {
                 onChange={(e) => updateManualSlide(i, 'headline', e.target.value)}
                 required
                 placeholder="Headline"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
               />
               <textarea
                 value={slide.body}
                 onChange={(e) => updateManualSlide(i, 'body', e.target.value)}
                 rows={3}
                 placeholder="Body"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
               />
             </div>
           ))}
@@ -437,7 +437,7 @@ export default function NewCarouselForm({ profiles }: Props) {
               required
               rows={10}
               placeholder="Paste the full article or research notes here…"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
 
@@ -491,7 +491,7 @@ export default function NewCarouselForm({ profiles }: Props) {
                     {idea.angle_description}
                   </p>
                   {loading && selectingIdea === idea.title && (
-                    <p className="text-xs text-gray-400 mt-2">{loadingLabel}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{loadingLabel}</p>
                   )}
                 </button>
               ))}
