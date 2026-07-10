@@ -3,7 +3,12 @@
 import { ICON_NAMES, IconName, LucideIcon } from '@/lib/icons'
 import { TYPOGRAPHY_PRESETS } from '@/lib/typography-presets'
 
-export type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient' | 'flat_icon_list'
+export type LayoutVariant =
+  | 'minimal'
+  | 'accent'
+  | 'editorial_gradient'
+  | 'flat_icon_list'
+  | 'flat_mockup_card'
 
 // Thumbnails are static PNGs committed under public/layout-previews/,
 // generated once by scripts/generate-layout-previews.ts — never rendered
@@ -16,6 +21,7 @@ const LAYOUT_OPTIONS: { key: LayoutVariant; name: string; imageOnly?: boolean }[
   { key: 'accent', name: 'Accent' },
   { key: 'editorial_gradient', name: 'Editorial (Gradient)', imageOnly: true },
   { key: 'flat_icon_list', name: 'Flat Icon List' },
+  { key: 'flat_mockup_card', name: 'Flat Mockup Card' },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
