@@ -122,6 +122,8 @@ export default async function CarouselPostPage({
           }
           initialTypographyPreset={post.typography_preset}
           brandColors={brand?.visual_style?.colors ?? null}
+          topic={post.topic}
+          brandName={brand?.name ?? null}
         />
 
         {hasDesign ? (

@@ -25,7 +25,7 @@ const LAYOUT_OPTIONS: { key: LayoutVariant; name: string; imageOnly?: boolean }[
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
-export type BackgroundMode = 'solid' | 'image'
+export type BackgroundMode = 'solid' | 'image' | 'ai'
 export type IconSelection = 'auto' | 'none' | IconName
 
 // Pure, controlled options UI shared by RegenerateDesignButton.tsx (design
@@ -51,6 +51,22 @@ interface Props {
   backgroundImageUrl: string | null
   backgroundFile: File | null
   onBackgroundFileChange: (file: File | null) => void
+  // "Generate with AI" — deliberately NOT a single "generate and use"
+  // action: aiPreviewUrl holds a generated-but-not-yet-confirmed image,
+  // shown with explicit "Use This Image" / "Try Again" choices, since
+  // Pollinations has minimal content moderation and results need human
+  // review before being used as real (often client-facing) brand
+  // content. This component only renders the prompt/preview UI; the
+  // actual generation call and "use" logic live in the parent, same
+  // division of responsibility as backgroundFile/onBackgroundFileChange
+  // above.
+  aiPrompt: string
+  onAiPromptChange: (value: string) => void
+  aiPreviewUrl: string | null
+  onGeneratePreview: () => void
+  onUseAiImage: () => void
+  generatingAi?: boolean
+  aiError?: string | null
   brandColors?: Record<string, string> | null
   disabled?: boolean
 }
@@ -76,6 +92,13 @@ export default function DesignOptionsPanel({
   backgroundImageUrl,
   backgroundFile,
   onBackgroundFileChange,
+  aiPrompt,
+  onAiPromptChange,
+  aiPreviewUrl,
+  onGeneratePreview,
+  onUseAiImage,
+  generatingAi = false,
+  aiError = null,
   brandColors = null,
   disabled = false,
 }: Props) {
@@ -90,7 +113,9 @@ export default function DesignOptionsPanel({
             below, applied here too so every layout option has a visual
             preview rather than just a text label. */}
         <div className="grid grid-cols-4 gap-1.5">
-          {LAYOUT_OPTIONS.filter((opt) => !opt.imageOnly || backgroundMode === 'image').map(
+          {LAYOUT_OPTIONS.filter(
+            (opt) => !opt.imageOnly || backgroundMode === 'image' || backgroundMode === 'ai'
+          ).map(
             (opt) => (
               <button
                 key={opt.key}
@@ -305,6 +330,18 @@ export default function DesignOptionsPanel({
           >
             Upload Image
           </button>
+          <button
+            type="button"
+            onClick={() => onBackgroundModeChange('ai')}
+            disabled={disabled}
+            className={`flex-1 rounded-md py-1 text-xs font-medium transition-colors ${
+              backgroundMode === 'ai'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+            }`}
+          >
+            Generate with AI
+          </button>
         </div>
 
         {backgroundMode === 'image' && (
@@ -327,6 +364,78 @@ export default function DesignOptionsPanel({
               disabled={disabled}
               className="w-full text-sm bg-white text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:file:bg-gray-800 dark:file:text-gray-300 dark:hover:file:bg-gray-700"
             />
+          </div>
+        )}
+
+        {backgroundMode === 'ai' && (
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              AI-generated images may occasionally produce unexpected results —
+              please review before using.
+            </p>
+
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => onAiPromptChange(e.target.value)}
+              disabled={disabled || generatingAi}
+              rows={2}
+              placeholder="Describe the background image you want…"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            />
+
+            {backgroundImageUrl && !aiPreviewUrl && (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={backgroundImageUrl}
+                  alt="Current background"
+                  className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-gray-700"
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Current background — generate a new one to replace it
+                </span>
+              </div>
+            )}
+
+            {aiPreviewUrl ? (
+              <div className="space-y-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={aiPreviewUrl}
+                  alt="Generated preview"
+                  className="w-full max-w-[240px] aspect-[1080/1350] object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onUseAiImage}
+                    disabled={disabled || generatingAi}
+                    className="flex-1 rounded-lg bg-blue-600 text-white py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Use This Image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onGeneratePreview}
+                    disabled={disabled || generatingAi || !aiPrompt.trim()}
+                    className="flex-1 rounded-lg border border-gray-300 text-gray-700 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  >
+                    {generatingAi ? 'Generating…' : 'Try Again'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onGeneratePreview}
+                disabled={disabled || generatingAi || !aiPrompt.trim()}
+                className="w-full rounded-lg border border-gray-300 text-gray-700 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                {generatingAi ? 'Generating…' : 'Generate Preview'}
+              </button>
+            )}
+
+            {aiError && <p className="text-xs text-red-600 dark:text-red-400">{aiError}</p>}
           </div>
         )}
       </div>
