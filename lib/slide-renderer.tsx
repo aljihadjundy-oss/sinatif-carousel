@@ -249,9 +249,9 @@ const BODY_CHAR_LIMIT: Record<TextDensity, number | null> = {
 // "detailed" needs a hard cap here, and every tier is capped noticeably
 // tighter than the solid-background limits above.
 const BODY_CHAR_LIMIT_IMAGE_BG: Record<TextDensity, number> = {
-  concise: 60,
-  standard: 100,
-  detailed: 130,
+  concise: 90,
+  standard: 150,
+  detailed: 190,
 }
 
 function applyTextDensity(
@@ -271,10 +271,16 @@ const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
 
 // Headline-focused shrinks body text relative to whatever text_density
 // already picked, rather than a second independent size table competing
-// with it.
-function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
+// with it. `smaller` is used for the two image-background treatments
+// (accent/minimal's bottom block, editorial_gradient's lower third) —
+// raising BODY_CHAR_LIMIT_IMAGE_BG to show meaningfully more text only
+// works if it also renders smaller, otherwise a 2-line headline plus a
+// few more lines of body overflows the fixed-height block (confirmed by
+// rendering it both ways before choosing this over an even lower char cap).
+function bodyFontSize(density: TextDensity, hierarchy: Hierarchy, smaller: boolean = false): number {
   const base = BODY_FONT_SIZE[density]
-  return hierarchy === 'headline_focused' ? Math.round(base * 0.85) : base
+  const scaled = smaller ? Math.round(base * 0.8) : base
+  return hierarchy === 'headline_focused' ? Math.round(scaled * 0.85) : scaled
 }
 
 // Slide number indicator: plain text for "minimal", a colored pill badge
@@ -852,8 +858,8 @@ export async function renderSlide(
             display: 'flex',
             fontFamily: fontConfig.bodyFamily,
             fontWeight: fontConfig.bodyWeight,
-            fontSize: bodyFontSize(textDensity, hierarchy),
-            lineHeight: 1.4,
+            fontSize: bodyFontSize(textDensity, hierarchy, true),
+            lineHeight: 1.35,
             color: '#FFFFFF',
             opacity: 0.9,
           }}
@@ -946,8 +952,8 @@ export async function renderSlide(
             display: 'flex',
             fontFamily: fontConfig.bodyFamily,
             fontWeight: fontConfig.bodyWeight,
-            fontSize: bodyFontSize(textDensity, hierarchy),
-            lineHeight: 1.4,
+            fontSize: bodyFontSize(textDensity, hierarchy, true),
+            lineHeight: 1.35,
             opacity: 0.9,
           }}
         >
