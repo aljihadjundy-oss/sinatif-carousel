@@ -47,6 +47,15 @@ export default function RegenerateDesignButton({
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(
     initialBackgroundImageUrl ? 'image' : 'solid'
   )
+  // Switching to solid removes "Editorial (Gradient)" from the Layout
+  // dropdown (it only makes sense with a photo) — if it was selected,
+  // reset it rather than leaving a value with no matching <option>.
+  function handleBackgroundModeChange(mode: BackgroundMode) {
+    setBackgroundMode(mode)
+    if (mode === 'solid' && layoutVariant === 'editorial_gradient') {
+      setLayoutVariant('minimal')
+    }
+  }
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(
     initialBackgroundImageUrl
@@ -145,7 +154,7 @@ export default function RegenerateDesignButton({
         typographyPreset={typographyPreset}
         onTypographyPresetChange={setTypographyPreset}
         backgroundMode={backgroundMode}
-        onBackgroundModeChange={setBackgroundMode}
+        onBackgroundModeChange={handleBackgroundModeChange}
         backgroundImageUrl={backgroundImageUrl}
         backgroundFile={backgroundFile}
         onBackgroundFileChange={setBackgroundFile}

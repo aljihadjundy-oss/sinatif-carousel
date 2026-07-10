@@ -3,7 +3,7 @@
 import { ICON_NAMES, IconName, LucideIcon } from '@/lib/icons'
 import { TYPOGRAPHY_PRESETS } from '@/lib/typography-presets'
 
-export type LayoutVariant = 'minimal' | 'accent'
+export type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient'
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
 export type BackgroundMode = 'solid' | 'image'
@@ -75,6 +75,13 @@ export default function DesignOptionsPanel({
           >
             <option value="minimal">Minimal</option>
             <option value="accent">Accent</option>
+            {/* Only meaningful with a background photo — the designer
+                route falls back to accent-like rendering if this is ever
+                submitted without one, but there's no reason to offer it
+                here when there's no photo to apply it to. */}
+            {backgroundMode === 'image' && (
+              <option value="editorial_gradient">Editorial (Gradient)</option>
+            )}
           </select>
         </div>
 

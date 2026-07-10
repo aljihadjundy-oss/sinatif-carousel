@@ -71,6 +71,15 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [iconSelection, setIconSelection] = useState<IconSelection>('none')
   const [typographyPreset, setTypographyPreset] = useState<string | null>(null)
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('solid')
+  // Switching to solid removes "Editorial (Gradient)" from the Layout
+  // dropdown (it only makes sense with a photo) — if it was selected,
+  // reset it rather than leaving a value with no matching <option>.
+  function handleBackgroundModeChange(mode: BackgroundMode) {
+    setBackgroundMode(mode)
+    if (mode === 'solid' && layoutVariant === 'editorial_gradient') {
+      setLayoutVariant('minimal')
+    }
+  }
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
   const [designLoadingLabel, setDesignLoadingLabel] = useState('')
 
@@ -368,7 +377,7 @@ export default function NewCarouselForm({ profiles }: Props) {
           typographyPreset={typographyPreset}
           onTypographyPresetChange={setTypographyPreset}
           backgroundMode={backgroundMode}
-          onBackgroundModeChange={setBackgroundMode}
+          onBackgroundModeChange={handleBackgroundModeChange}
           backgroundImageUrl={null}
           backgroundFile={backgroundFile}
           onBackgroundFileChange={setBackgroundFile}

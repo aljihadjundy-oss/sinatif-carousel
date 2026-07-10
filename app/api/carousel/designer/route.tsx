@@ -185,8 +185,8 @@ async function loadFontsForBrand(fontConfig: FontConfig) {
   return [...primary, ...fallbacks]
 }
 
-type LayoutVariant = 'minimal' | 'accent'
-const LAYOUT_VARIANTS: LayoutVariant[] = ['minimal', 'accent']
+type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient'
+const LAYOUT_VARIANTS: LayoutVariant[] = ['minimal', 'accent', 'editorial_gradient']
 
 type TextDensity = 'concise' | 'standard' | 'detailed'
 const TEXT_DENSITIES: TextDensity[] = ['concise', 'standard', 'detailed']
@@ -325,16 +325,151 @@ async function renderSlide(
   backgroundImageUrl: string | null,
   iconChoice: IconName | 'none' | null
 ) {
-  const isAccent = variant === 'accent'
-  const icon = isAccent
+  const hasBackgroundImage = !!backgroundImageUrl
+  // editorial_gradient only makes sense with a photo — falling back to
+  // the accent treatment (rather than erroring) if it's ever picked
+  // without background_image_url set keeps this route lenient the same
+  // way every other option here already is about stale/mismatched data.
+  const isEditorialGradient = variant === 'editorial_gradient' && hasBackgroundImage
+  const isAccent = variant === 'accent' || (variant === 'editorial_gradient' && !hasBackgroundImage)
+  const icon = isAccent || isEditorialGradient
     ? iconChoice === 'none'
       ? null
       : (iconChoice as IconName | null) ?? pickSlideIcon(slide.headline, slide.body, brandName)
     : null
-  const hasBackgroundImage = !!backgroundImageUrl
   const body = applyTextDensity(slide.body, textDensity, hasBackgroundImage)
 
-  const content = hasBackgroundImage ? (
+  const content = isEditorialGradient ? (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        backgroundColor: colors.bg,
+        fontFamily: fontConfig.bodyFamily,
+        overflow: 'hidden',
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={backgroundImageUrl!}
+        alt=""
+        width={1080}
+        height={1350}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 1080,
+          height: 1350,
+          objectFit: 'cover',
+        }}
+      />
+
+      {/* Dark gradient from fully transparent at the top to ~80% black at
+          the bottom — verified this renders correctly in Satori (linear-
+          gradient CSS backgrounds are supported) before committing to this
+          approach, rather than assuming. Text sits directly on the
+          gradient in the lower third where it's darkest; no separate
+          solid block like the other image-background treatment. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 1080,
+          height: 1350,
+          display: 'flex',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,0.8) 100%)',
+        }}
+      />
+
+      {logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt=""
+          width={60}
+          height={60}
+          style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
+        />
+      )}
+
+      {/* Purely decorative corner cue — not functional navigation, this
+          is a static image. */}
+      <div style={{ position: 'absolute', bottom: 40, right: 40, display: 'flex', opacity: 0.8 }}>
+        <LucideIcon name="ArrowRight" size={32} color="#FFFFFF" strokeWidth={2} />
+      </div>
+
+      {/* Large stylized slide number as a design element (low opacity,
+          serif), not a plain small counter. Originally positioned with
+          its own fixed `bottom` coordinate independent of the text block
+          below it — verified via a real rendered slide that this
+          overlapped the icon/headline whenever their combined height
+          varied (e.g. an icon present, or a longer headline), since two
+          independently-positioned absolute blocks don't know about each
+          other's size. Fixed by putting it in the same flex column as
+          everything else, immediately above the icon, so it's always
+          pushed clear regardless of how much space the content below it
+          needs. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 80,
+          right: 80,
+          bottom: 80,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: 'Cinzel',
+            fontWeight: 700,
+            fontSize: 120,
+            lineHeight: 1,
+            color: '#FFFFFF',
+            opacity: 0.35,
+          }}
+        >
+          {slide.index}
+        </div>
+        {icon && (
+          <div style={{ display: 'flex' }}>
+            <LucideIcon name={icon} size={44} color="#FFFFFF" strokeWidth={2} />
+          </div>
+        )}
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.headlineFamily,
+            fontWeight: fontConfig.headlineWeight,
+            fontSize: HEADLINE_FONT_SIZE[hierarchy],
+            lineHeight: 1.15,
+            color: '#FFFFFF',
+          }}
+        >
+          {slide.headline}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.bodyFamily,
+            fontWeight: fontConfig.bodyWeight,
+            fontSize: bodyFontSize(textDensity, hierarchy),
+            lineHeight: 1.4,
+            color: '#FFFFFF',
+            opacity: 0.9,
+          }}
+        >
+          {body}
+        </div>
+      </div>
+    </div>
+  ) : hasBackgroundImage ? (
     <div
       style={{
         position: 'relative',
