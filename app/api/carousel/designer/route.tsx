@@ -233,6 +233,16 @@ export async function POST(request: Request) {
   // regenerate at that density (or switch back to it) reads the cached
   // rewrite instead of re-calling the model.
   let script: Script = originalScript
+  // Logs unconditionally (not gated behind DEBUG_DESIGNER like the raw
+  // request body log above) — added to trace a report that
+  // rewriteSlidesForDensity() never seems to run in production (zero
+  // script_concise/script_detailed rows in stage_outputs despite posts
+  // with those densities set). Cheap enough to leave in permanently,
+  // same reasoning as the "request from user" log above.
+  console.log(
+    `designer: resolved text_density="${textDensity}" for post ${postId} ` +
+      `(will ${textDensity === 'standard' ? 'reuse the "script" stage as-is' : `check/populate stage "script_${textDensity}"`})`
+  )
   if (textDensity !== 'standard') {
     const densityStage = `script_${textDensity}`
     const { data: cachedStage, error: cachedErr } = await supabase
@@ -250,17 +260,25 @@ export async function POST(request: Request) {
     }
 
     const cached = cachedStage?.output_json as Script | undefined
+    console.log(
+      `designer: cache lookup for stage "${densityStage}" on post ${postId} ` +
+        `${cached?.slides?.length ? `HIT (${cached.slides.length} slides)` : 'MISS — will call rewriteSlidesForDensity()'}`
+    )
     if (cached?.slides?.length) {
       script = cached
     } else {
       let rewrittenSlides
       try {
+        console.log(`designer: calling rewriteSlidesForDensity() for post ${postId}, density "${textDensity}"`)
         rewrittenSlides = await rewriteSlidesForDensity(
           originalScript.slides,
           textDensity,
           brandName ?? 'this brand',
           toneGuideline,
           contentStandards
+        )
+        console.log(
+          `designer: rewriteSlidesForDensity() succeeded for post ${postId} — ${rewrittenSlides.length} slides rewritten`
         )
       } catch (err) {
         console.error('designer: rewriteSlidesForDensity error', err)
@@ -287,6 +305,8 @@ export async function POST(request: Request) {
         // failure would throw away a successful (and costly) rewrite over
         // what's purely a caching optimization failing to persist.
         console.error('designer: failed to cache density rewrite', densityStageErr)
+      } else {
+        console.log(`designer: cached rewrite under stage "${densityStage}" for post ${postId}`)
       }
     }
   }
