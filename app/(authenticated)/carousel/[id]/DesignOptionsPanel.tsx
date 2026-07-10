@@ -3,7 +3,20 @@
 import { ICON_NAMES, IconName, LucideIcon } from '@/lib/icons'
 import { TYPOGRAPHY_PRESETS } from '@/lib/typography-presets'
 
-export type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient'
+export type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient' | 'flat_icon_list'
+
+// Thumbnails are static PNGs committed under public/layout-previews/,
+// generated once by scripts/generate-layout-previews.ts — never rendered
+// at runtime. imageOnly gates editorial_gradient out of the grid when
+// there's no background photo to apply it to (the designer route falls
+// back to accent-like rendering if it's ever submitted without one, but
+// there's no reason to offer it here in that case).
+const LAYOUT_OPTIONS: { key: LayoutVariant; name: string; imageOnly?: boolean }[] = [
+  { key: 'minimal', name: 'Minimal' },
+  { key: 'accent', name: 'Accent' },
+  { key: 'editorial_gradient', name: 'Editorial (Gradient)', imageOnly: true },
+  { key: 'flat_icon_list', name: 'Flat Icon List' },
+]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
 export type BackgroundMode = 'solid' | 'image'
@@ -62,29 +75,50 @@ export default function DesignOptionsPanel({
 }: Props) {
   return (
     <div className="border border-gray-200 rounded-lg p-3 space-y-3 dark:border-gray-800">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-            Layout
-          </label>
-          <select
-            value={layoutVariant}
-            onChange={(e) => onLayoutVariantChange(e.target.value as LayoutVariant)}
-            disabled={disabled}
-            className={`w-full ${selectClasses}`}
-          >
-            <option value="minimal">Minimal</option>
-            <option value="accent">Accent</option>
-            {/* Only meaningful with a background photo — the designer
-                route falls back to accent-like rendering if this is ever
-                submitted without one, but there's no reason to offer it
-                here when there's no photo to apply it to. */}
-            {backgroundMode === 'image' && (
-              <option value="editorial_gradient">Editorial (Gradient)</option>
-            )}
-          </select>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Layout
+        </label>
+        {/* Visual picker (thumbnail + name, radio-style selection) instead
+            of a plain dropdown — same pattern as the Typography picker
+            below, applied here too so every layout option has a visual
+            preview rather than just a text label. */}
+        <div className="grid grid-cols-4 gap-1.5">
+          {LAYOUT_OPTIONS.filter((opt) => !opt.imageOnly || backgroundMode === 'image').map(
+            (opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => onLayoutVariantChange(opt.key)}
+                disabled={disabled}
+                className={`rounded-lg border p-1 text-left disabled:opacity-50 ${
+                  layoutVariant === opt.key
+                    ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-500/10'
+                    : 'border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/layout-previews/${opt.key}.png`}
+                  alt={opt.name}
+                  className="w-full aspect-[400/500] rounded object-cover border border-gray-200 dark:border-gray-700"
+                />
+                <p
+                  className={`mt-1 text-[11px] font-medium truncate ${
+                    layoutVariant === opt.key
+                      ? 'text-blue-700 dark:text-blue-400'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  {opt.name}
+                </p>
+              </button>
+            )
+          )}
         </div>
+      </div>
 
+      <div className="grid grid-cols-2 gap-2">
         {brandColors && Object.keys(brandColors).length > 0 && (
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -140,7 +174,7 @@ export default function DesignOptionsPanel({
 
       <div>
         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-          Icon (accent layout only)
+          Icon (Accent / Flat Icon List layouts only)
         </label>
         <div className="flex flex-wrap gap-1.5">
           {(['auto', 'none', ...ICON_NAMES] as IconSelection[]).map((option) => (

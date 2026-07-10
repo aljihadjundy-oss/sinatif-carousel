@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import RegenerateDesignButton from './RegenerateDesignButton'
+import { LayoutVariant } from './DesignOptionsPanel'
 import { IconName } from '@/lib/icons'
 import DownloadAllButton from './DownloadAllButton'
 import SlideImage from './SlideImage'
@@ -106,7 +107,7 @@ export default async function CarouselPostPage({
           postId={post.id}
           buttonStyle={hasDesign ? 'secondary' : 'primary'}
           initialLayoutVariant={
-            (post.layout_variant as 'minimal' | 'accent' | null) ?? 'minimal'
+            (post.layout_variant as LayoutVariant | null) ?? 'minimal'
           }
           initialColorScheme={post.color_scheme}
           initialTextDensity={
