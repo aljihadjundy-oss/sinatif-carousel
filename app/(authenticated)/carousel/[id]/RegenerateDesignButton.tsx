@@ -10,6 +10,17 @@ import DesignOptionsPanel, {
   TextDensity,
 } from './DesignOptionsPanel'
 
+// Pre-fills the AI image prompt so users can just click Generate, or edit
+// first. visual_style has no free-text "description" field (only
+// structured colors/logo_url), so the brand name stands in as the style
+// cue instead of inventing a second descriptive field just for this.
+function defaultAiPrompt(topic: string, brandName: string | null): string {
+  const topicPart = topic.trim() || 'a modern professional topic'
+  return brandName
+    ? `professional photo related to: ${topicPart}, in the visual style of ${brandName}`
+    : `professional photo related to: ${topicPart}`
+}
+
 interface Props {
   postId: string
   buttonStyle?: 'primary' | 'secondary'
@@ -21,6 +32,8 @@ interface Props {
   initialIconName?: IconSelection
   initialTypographyPreset?: string | null
   brandColors?: Record<string, string> | null
+  topic?: string
+  brandName?: string | null
 }
 
 export default function RegenerateDesignButton({
@@ -34,6 +47,8 @@ export default function RegenerateDesignButton({
   initialIconName = 'auto',
   initialTypographyPreset = null,
   brandColors = null,
+  topic = '',
+  brandName = null,
 }: Props) {
   const router = useRouter()
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>(initialLayoutVariant)
@@ -60,15 +75,50 @@ export default function RegenerateDesignButton({
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(
     initialBackgroundImageUrl
   )
+  const [aiPrompt, setAiPrompt] = useState(() => defaultAiPrompt(topic, brandName))
+  const [aiPreviewUrl, setAiPreviewUrl] = useState<string | null>(null)
+  const [generatingAi, setGeneratingAi] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingLabel, setLoadingLabel] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  async function handleGenerateAiPreview() {
+    setGeneratingAi(true)
+    setAiError(null)
+    const res = await fetch('/api/carousel/ai-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post_id: postId, prompt: aiPrompt }),
+    })
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setAiError(json.error ?? 'Image generation failed')
+      setGeneratingAi(false)
+      return
+    }
+
+    const { url } = await res.json()
+    setAiPreviewUrl(url)
+    setGeneratingAi(false)
+  }
+
+  // Confirms the preview into the actual background choice — the
+  // generated image is already uploaded to storage by ai-image/route.ts,
+  // so this just adopts that URL the same way a completed upload would.
+  function handleUseAiImage() {
+    if (!aiPreviewUrl) return
+    setBackgroundImageUrl(aiPreviewUrl)
+    setAiPreviewUrl(null)
+  }
 
   async function handleClick() {
     setLoading(true)
     setError(null)
 
-    let effectiveBackgroundUrl = backgroundMode === 'image' ? backgroundImageUrl : null
+    let effectiveBackgroundUrl =
+      backgroundMode === 'image' || backgroundMode === 'ai' ? backgroundImageUrl : null
 
     if (backgroundMode === 'image' && backgroundFile) {
       setLoadingLabel('Mengunggah background…')
@@ -158,6 +208,13 @@ export default function RegenerateDesignButton({
         backgroundImageUrl={backgroundImageUrl}
         backgroundFile={backgroundFile}
         onBackgroundFileChange={setBackgroundFile}
+        aiPrompt={aiPrompt}
+        onAiPromptChange={setAiPrompt}
+        aiPreviewUrl={aiPreviewUrl}
+        onGeneratePreview={handleGenerateAiPreview}
+        onUseAiImage={handleUseAiImage}
+        generatingAi={generatingAi}
+        aiError={aiError}
         brandColors={brandColors}
         disabled={loading}
       />

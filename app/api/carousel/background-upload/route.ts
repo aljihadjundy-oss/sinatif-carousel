@@ -1,36 +1,12 @@
 import { NextResponse } from 'next/server'
-import sharp from 'sharp'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { normalizeBackgroundImage } from '@/lib/image-processing'
 
 export const runtime = 'nodejs'
 
-// Phone/camera photos commonly store rotation as EXIF orientation
-// metadata rather than actually rotating the pixels. Browsers and most
-// image viewers auto-rotate based on that tag, but Satori (used by the
-// designer route's ImageResponse) ignores it entirely and renders the
-// raw, unrotated pixels — verified directly against a synthetic photo
-// with orientation=6, which rendered sideways in Satori. sharp's
-// .rotate() with no arguments auto-orients based on EXIF and bakes the
-// rotation into the pixels, then strips the orientation tag — verified
-// this produces a physically-rotated image with no residual EXIF
-// orientation left for Satori to (still) ignore. Applied first, before
-// the resize/crop below, so orientation is corrected on the pixels that
-// then get cropped — cropping before rotating would crop the wrong edges
-// for any photo that isn't already right-side-up.
-//
-// Every slide is a fixed 1080x1350 (4:5) canvas. Satori's CSS support is
-// limited enough (discovered earlier this session) that relying on its
-// objectFit for arbitrary source aspect ratios is fragile — instead the
-// upload itself is resized+cropped server-side with sharp so the stored
-// object is ALWAYS exactly 1080x1350, and the designer route can just
-// embed it with no fit logic of its own. `fit: 'cover'` scales the image
-// up or down (upscaling small images too, unlike the old
-// withoutEnlargement-guarded max-width resize) so it fully fills the
-// frame with no empty borders, then crops to the target aspect ratio
-// centered on the image — no stretching, no distortion, no repeating.
-const TARGET_WIDTH = 1080
-const TARGET_HEIGHT = 1350
-const JPEG_QUALITY = 80
+// EXIF rotation + crop-to-1080x1350 logic lives in lib/image-processing.ts
+// (see that file for the original investigation into why each step is
+// needed), shared with ai-image/route.ts so both call sites stay in sync.
 
 export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient()
@@ -77,11 +53,7 @@ export async function POST(request: Request) {
   let normalized: Buffer
   try {
     const inputBuffer = Buffer.from(await file.arrayBuffer())
-    normalized = await sharp(inputBuffer)
-      .rotate()
-      .resize(TARGET_WIDTH, TARGET_HEIGHT, { fit: 'cover', position: 'center' })
-      .jpeg({ quality: JPEG_QUALITY })
-      .toBuffer()
+    normalized = await normalizeBackgroundImage(inputBuffer)
   } catch (err) {
     console.error('background-upload: image processing failed', err)
     return NextResponse.json({ error: 'Failed to process image' }, { status: 400 })

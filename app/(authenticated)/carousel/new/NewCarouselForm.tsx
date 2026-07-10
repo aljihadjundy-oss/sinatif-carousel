@@ -13,6 +13,17 @@ import DesignOptionsPanel, {
   TextDensity,
 } from '../[id]/DesignOptionsPanel'
 
+// Pre-fills the AI image prompt so users can just click Generate, or edit
+// first. visual_style has no free-text "description" field (only
+// structured colors/logo_url), so the brand name stands in as the style
+// cue instead of inventing a second descriptive field just for this.
+function defaultAiPrompt(topic: string, brandName: string | null): string {
+  const topicPart = topic.trim() || 'a modern professional topic'
+  return brandName
+    ? `professional photo related to: ${topicPart}, in the visual style of ${brandName}`
+    : `professional photo related to: ${topicPart}`
+}
+
 interface Props {
   profiles: BrandProfileSummary[]
 }
@@ -81,7 +92,43 @@ export default function NewCarouselForm({ profiles }: Props) {
     }
   }
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
+  // Holds the confirmed AI-generated image URL once the user clicks "Use
+  // This Image" — separate from aiPreviewUrl, which holds a
+  // generated-but-not-yet-confirmed candidate (see DesignOptionsPanel.tsx).
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiPreviewUrl, setAiPreviewUrl] = useState<string | null>(null)
+  const [generatingAi, setGeneratingAi] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const [designLoadingLabel, setDesignLoadingLabel] = useState('')
+
+  async function handleGenerateAiPreview() {
+    if (!scriptedPostId) return
+    setGeneratingAi(true)
+    setAiError(null)
+    const res = await fetch('/api/carousel/ai-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post_id: scriptedPostId, prompt: aiPrompt }),
+    })
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setAiError(json.error ?? 'Image generation failed')
+      setGeneratingAi(false)
+      return
+    }
+
+    const { url } = await res.json()
+    setAiPreviewUrl(url)
+    setGeneratingAi(false)
+  }
+
+  function handleUseAiImage() {
+    if (!aiPreviewUrl) return
+    setBackgroundImageUrl(aiPreviewUrl)
+    setAiPreviewUrl(null)
+  }
 
   const loading = stage !== 'idle'
   const loadingLabel =
@@ -132,17 +179,20 @@ export default function NewCarouselForm({ profiles }: Props) {
   async function enterOptionsStage(id: string) {
     setScriptedPostId(id)
 
+    let brandName: string | null = null
     if (brandProfileId) {
       const { data: brand } = await supabase
         .schema('carousel')
         .from('brand_profiles')
-        .select('visual_style')
+        .select('name, visual_style')
         .eq('id', brandProfileId)
         .maybeSingle()
       const colors = (brand?.visual_style as { colors?: Record<string, string> } | null)?.colors
       setOptionsBrandColors(colors ?? null)
+      brandName = brand?.name ?? null
     }
 
+    setAiPrompt(defaultAiPrompt(topic, brandName))
     setStage('options')
   }
 
@@ -152,7 +202,8 @@ export default function NewCarouselForm({ profiles }: Props) {
     setStage('design')
     setError(null)
 
-    let effectiveBackgroundUrl: string | null = null
+    let effectiveBackgroundUrl: string | null =
+      backgroundMode === 'ai' ? backgroundImageUrl : null
 
     if (backgroundMode === 'image' && backgroundFile) {
       setDesignLoadingLabel('Mengunggah background…')
@@ -378,9 +429,16 @@ export default function NewCarouselForm({ profiles }: Props) {
           onTypographyPresetChange={setTypographyPreset}
           backgroundMode={backgroundMode}
           onBackgroundModeChange={handleBackgroundModeChange}
-          backgroundImageUrl={null}
+          backgroundImageUrl={backgroundImageUrl}
           backgroundFile={backgroundFile}
           onBackgroundFileChange={setBackgroundFile}
+          aiPrompt={aiPrompt}
+          onAiPromptChange={setAiPrompt}
+          aiPreviewUrl={aiPreviewUrl}
+          onGeneratePreview={handleGenerateAiPreview}
+          onUseAiImage={handleUseAiImage}
+          generatingAi={generatingAi}
+          aiError={aiError}
           brandColors={optionsBrandColors}
           disabled={stage === 'design'}
         />
