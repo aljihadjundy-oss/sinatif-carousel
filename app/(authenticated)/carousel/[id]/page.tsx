@@ -35,7 +35,7 @@ export default async function CarouselPostPage({
     .schema('carousel')
     .from('posts')
     .select(
-      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, brand_profiles(name, visual_style)'
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, brand_profiles(name, visual_style)'
     )
     .eq('id', id)
     .single()
@@ -119,6 +119,7 @@ export default async function CarouselPostPage({
           initialIconName={
             (post.icon_name as IconName | 'none' | null) ?? 'auto'
           }
+          initialTypographyPreset={post.typography_preset}
           brandColors={brand?.visual_style?.colors ?? null}
         />
 
