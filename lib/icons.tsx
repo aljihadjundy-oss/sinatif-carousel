@@ -6,6 +6,9 @@
 // createLucideIcon builds the component from), which is plain data with
 // no forwardRef involved — building <svg>/<path> JSX from that directly
 // is real lucide-react icon data, just without the incompatible wrapper.
+// Explicit React import so this module's JSX also works when executed
+// directly via `npx tsx` (see lib/slide-renderer.tsx for why).
+import React from 'react'
 import { __iconNode as trendingUpNode } from 'lucide-react/dist/esm/icons/trending-up.mjs'
 import { __iconNode as targetNode } from 'lucide-react/dist/esm/icons/target.mjs'
 import { __iconNode as lightbulbNode } from 'lucide-react/dist/esm/icons/lightbulb.mjs'
