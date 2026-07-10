@@ -237,21 +237,33 @@ const BODY_FONT_SIZE: Record<TextDensity, number> = {
   detailed: 36,
 }
 
+// Density is now handled upstream by rewriteSlidesForDensity() (see
+// lib/ai-client.ts) — the model rewrites each slide's body to the target
+// word count (concise ~15-20, standard ~30-40, detailed ~50-70 words)
+// instead of this route truncating one long body by character count. As
+// a result these caps are no longer the primary mechanism; they're a
+// safety net for the rare case a rewrite comes back longer than asked
+// (a very long single sentence that can't be reasonably broken, a model
+// that ignores the word-count instruction, etc). Set generously above
+// what a correctly-rewritten "detailed" body should ever reach, rather
+// than tuned tightly to the target word counts.
 const BODY_CHAR_LIMIT: Record<TextDensity, number | null> = {
-  concise: 110,
-  standard: 220,
+  concise: 200,
+  standard: 400,
   detailed: null,
 }
 
 // Image-background slides put headline + body + slide number inside a
 // bottom-anchored block covering ~38% of slide height (see
-// BOTTOM_BLOCK_HEIGHT), rather than the full padded slide — so even
-// "detailed" needs a hard cap here, and every tier is capped noticeably
-// tighter than the solid-background limits above.
+// BOTTOM_BLOCK_HEIGHT), rather than the full padded slide, so this still
+// needs a hard ceiling even as a safety net — imageBgBodyFontSize below
+// does the real work of fitting rewritten text of varying length into
+// that fixed space by scaling the font down as body length grows, rather
+// than this cap doing the fitting via truncation.
 const BODY_CHAR_LIMIT_IMAGE_BG: Record<TextDensity, number> = {
-  concise: 90,
-  standard: 150,
-  detailed: 190,
+  concise: 160,
+  standard: 300,
+  detailed: 480,
 }
 
 function applyTextDensity(
@@ -271,15 +283,32 @@ const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
 
 // Headline-focused shrinks body text relative to whatever text_density
 // already picked, rather than a second independent size table competing
-// with it. `smaller` is used for the two image-background treatments
-// (accent/minimal's bottom block, editorial_gradient's lower third) —
-// raising BODY_CHAR_LIMIT_IMAGE_BG to show meaningfully more text only
-// works if it also renders smaller, otherwise a 2-line headline plus a
-// few more lines of body overflows the fixed-height block (confirmed by
-// rendering it both ways before choosing this over an even lower char cap).
-function bodyFontSize(density: TextDensity, hierarchy: Hierarchy, smaller: boolean = false): number {
+// with it.
+function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
   const base = BODY_FONT_SIZE[density]
-  const scaled = smaller ? Math.round(base * 0.8) : base
+  return hierarchy === 'headline_focused' ? Math.round(base * 0.85) : base
+}
+
+// The two image-background treatments (accent/minimal's bottom block,
+// editorial_gradient's lower third) render body text inside a
+// fixed-height block alongside the headline and slide number — now that
+// density is a genuine rewrite rather than truncation (see
+// rewriteSlidesForDensity in lib/ai-client.ts), body length varies
+// continuously with how the rewrite came out rather than sitting at one
+// of 3 known-safe lengths, so font size is scaled off the actual
+// character count instead of off the density tier. Thresholds tuned by
+// rendering real "detailed" (~50-70 word) rewrites through the pipeline
+// and checking for overlap with the headline/slide-number badge, the
+// same technique used for the density char caps above.
+function imageBgBodyFontSize(density: TextDensity, hierarchy: Hierarchy, bodyLength: number): number {
+  const base = BODY_FONT_SIZE[density]
+  let scale: number
+  if (bodyLength <= 90) scale = 0.8
+  else if (bodyLength <= 160) scale = 0.72
+  else if (bodyLength <= 240) scale = 0.62
+  else if (bodyLength <= 340) scale = 0.54
+  else scale = 0.46
+  const scaled = Math.round(base * scale)
   return hierarchy === 'headline_focused' ? Math.round(scaled * 0.85) : scaled
 }
 
@@ -858,7 +887,7 @@ export async function renderSlide(
             display: 'flex',
             fontFamily: fontConfig.bodyFamily,
             fontWeight: fontConfig.bodyWeight,
-            fontSize: bodyFontSize(textDensity, hierarchy, true),
+            fontSize: imageBgBodyFontSize(textDensity, hierarchy, body.length),
             lineHeight: 1.35,
             color: '#FFFFFF',
             opacity: 0.9,
@@ -952,7 +981,7 @@ export async function renderSlide(
             display: 'flex',
             fontFamily: fontConfig.bodyFamily,
             fontWeight: fontConfig.bodyWeight,
-            fontSize: bodyFontSize(textDensity, hierarchy, true),
+            fontSize: imageBgBodyFontSize(textDensity, hierarchy, body.length),
             lineHeight: 1.35,
             opacity: 0.9,
           }}

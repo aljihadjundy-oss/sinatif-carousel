@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { ICON_NAMES, IconName } from '@/lib/icons'
 import { TYPOGRAPHY_PRESET_KEYS, getTypographyPreset } from '@/lib/typography-presets'
+import { rewriteSlidesForDensity } from '@/lib/ai-client'
 import {
   BRAND_FONTS,
   DEFAULT_FONTS,
@@ -199,8 +200,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: scriptErr.message }, { status: 500 })
   }
 
-  const script = scriptStage?.output_json as Script | undefined
-  if (!script?.slides?.length) {
+  const originalScript = scriptStage?.output_json as Script | undefined
+  if (!originalScript?.slides?.length) {
     return NextResponse.json(
       { error: 'No script found for this post' },
       { status: 400 }
@@ -209,16 +210,93 @@ export async function POST(request: Request) {
 
   let visualStyle: VisualStyle | null = null
   let brandName: string | null = null
+  let toneGuideline: string | null = null
+  let contentStandards: string | null = null
   if (post.brand_profile_id) {
     const { data: brand } = await supabase
       .schema('carousel')
       .from('brand_profiles')
-      .select('name, visual_style')
+      .select('name, visual_style, tone_guideline, content_standards')
       .eq('id', post.brand_profile_id)
       .maybeSingle()
     visualStyle = (brand?.visual_style as VisualStyle | null) ?? null
     brandName = brand?.name ?? null
+    toneGuideline = brand?.tone_guideline ?? null
+    contentStandards = brand?.content_standards ?? null
   }
+
+  // "standard" is the density the script is originally written at, so it
+  // reuses the "script" stage output as-is — no rewrite, no extra stage
+  // row. "concise"/"detailed" are cached per-post under their own stage
+  // name (script_concise / script_detailed): the first regenerate at a
+  // given density pays for one Groq rewrite call, every subsequent
+  // regenerate at that density (or switch back to it) reads the cached
+  // rewrite instead of re-calling the model.
+  let script: Script = originalScript
+  if (textDensity !== 'standard') {
+    const densityStage = `script_${textDensity}`
+    const { data: cachedStage, error: cachedErr } = await supabase
+      .schema('carousel')
+      .from('stage_outputs')
+      .select('output_json')
+      .eq('post_id', postId)
+      .eq('stage', densityStage)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (cachedErr) {
+      return NextResponse.json({ error: cachedErr.message }, { status: 500 })
+    }
+
+    const cached = cachedStage?.output_json as Script | undefined
+    if (cached?.slides?.length) {
+      script = cached
+    } else {
+      let rewrittenSlides
+      try {
+        rewrittenSlides = await rewriteSlidesForDensity(
+          originalScript.slides,
+          textDensity,
+          brandName ?? 'this brand',
+          toneGuideline,
+          contentStandards
+        )
+      } catch (err) {
+        console.error('designer: rewriteSlidesForDensity error', err)
+        return NextResponse.json(
+          { error: `Failed to rewrite script for "${textDensity}" density` },
+          { status: 502 }
+        )
+      }
+
+      script = { title: originalScript.title, slides: rewrittenSlides }
+
+      const { error: densityStageErr } = await supabase
+        .schema('carousel')
+        .from('stage_outputs')
+        .insert({
+          post_id: postId,
+          stage: densityStage,
+          output_json: script,
+        })
+
+      if (densityStageErr) {
+        // Non-fatal: the rewrite still renders correctly this time, it
+        // just won't be cached for next time. Surfacing this as a hard
+        // failure would throw away a successful (and costly) rewrite over
+        // what's purely a caching optimization failing to persist.
+        console.error('designer: failed to cache density rewrite', densityStageErr)
+      }
+    }
+  }
+
+  // script.slides is optional on the Script type (it mirrors the
+  // loosely-typed stage_outputs.output_json column), but every path above
+  // that assigns `script` already validated a non-empty slides array
+  // before assigning — this alias just gives the rest of the route a
+  // type that reflects that guarantee instead of re-checking it.
+  const slides = script.slides!
 
   const colors = pickColors(visualStyle, colorScheme)
   const logoUrl = visualStyle?.logo_url ?? null
@@ -234,7 +312,7 @@ export async function POST(request: Request) {
   // a set), not partially blend with the brand's normal fonts.
   const presetFonts = getTypographyPreset(typographyPreset)
   let fontConfig = presetFonts ?? mappedFonts ?? DEFAULT_FONTS
-  const total = script.slides.length
+  const total = slides.length
 
   let fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
   try {
@@ -270,7 +348,7 @@ export async function POST(request: Request) {
 
   const renderedSlides: { index: number; url: string }[] = []
   try {
-    for (const slide of script.slides) {
+    for (const slide of slides) {
       const png = await renderSlide(
         slide,
         total,
@@ -349,7 +427,7 @@ export async function POST(request: Request) {
     .schema('carousel')
     .from('slides')
     .insert(
-      script.slides.map((slide) => ({
+      slides.map((slide) => ({
         post_id: postId,
         slide_order: slide.index,
         copy_text: `${slide.headline}\n\n${slide.body}`,

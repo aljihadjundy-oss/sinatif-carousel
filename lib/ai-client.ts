@@ -219,3 +219,113 @@ export async function generateStructuredContentGroq({
 
   throw lastErr
 }
+
+// Text density used to be implemented as character-truncation of the
+// single generated body text (see BODY_CHAR_LIMIT* in slide-renderer.tsx)
+// — cutting sentences mid-thought rather than producing a genuinely
+// shorter/longer retelling of the same point. rewriteSlidesForDensity()
+// replaces that: it asks the model to rewrite each slide's body to a
+// target word count while preserving the meaning, so "concise" and
+// "detailed" are complete thoughts in their own right rather than a
+// truncated prefix of "standard". Headlines are passed through unchanged
+// — density is a body-copy concern only, per the product requirement.
+export interface DensityRewriteSlide {
+  index: number
+  headline: string
+  body: string
+}
+
+export type TextDensity = 'concise' | 'standard' | 'detailed'
+
+const DENSITY_WORD_TARGETS: Record<TextDensity, string> = {
+  concise: '15-20 words — punchy, essential point only',
+  standard: '30-40 words — the current default level of detail',
+  detailed: '50-70 words — a fuller explanation with supporting context',
+}
+
+const REWRITE_SYSTEM_PROMPT =
+  'You are a senior Indonesian social-media copywriter who rewrites Instagram carousel ' +
+  'body text to a target length while preserving the exact same meaning and message. ' +
+  'You always reply with a single valid JSON object and nothing else — no prose, no markdown fences.'
+
+function buildRewriteUserPrompt(
+  slides: DensityRewriteSlide[],
+  density: TextDensity,
+  brandName: string,
+  toneGuideline: string | null,
+  contentStandards: string | null
+): string {
+  const lines: string[] = []
+  lines.push(`Brand: ${brandName}`)
+  if (toneGuideline) lines.push(`Brand voice: ${toneGuideline}`)
+  if (contentStandards) lines.push(`Content standards: ${contentStandards}`)
+  lines.push('')
+  lines.push(
+    `Rewrite the "body" text of every slide below to target ${DENSITY_WORD_TARGETS[density]}. ` +
+      'Keep the exact same meaning and core message as the original body — do not add new ' +
+      'claims or drop the point being made, just re-express it at the target length. Do not ' +
+      'change any "headline" or "index" value; return them exactly as given.'
+  )
+  lines.push('')
+  lines.push('Original slides (JSON):')
+  lines.push(JSON.stringify({ slides }))
+  lines.push('')
+  lines.push(
+    'Return ONLY this JSON shape: {"slides": [{"index": number, "headline": string, "body": string}]}'
+  )
+  return lines.join('\n')
+}
+
+function buildRewriteJsonSchema() {
+  return {
+    type: 'object',
+    properties: {
+      slides: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            index: { type: 'number' },
+            headline: { type: 'string' },
+            body: { type: 'string' },
+          },
+          required: ['index', 'headline', 'body'],
+        },
+      },
+    },
+    required: ['slides'],
+  }
+}
+
+export async function rewriteSlidesForDensity(
+  slides: DensityRewriteSlide[],
+  density: TextDensity,
+  brandName: string,
+  toneGuideline: string | null,
+  contentStandards: string | null
+): Promise<DensityRewriteSlide[]> {
+  const result = (await generateStructuredContentGroq({
+    systemPrompt: REWRITE_SYSTEM_PROMPT,
+    userPrompt: buildRewriteUserPrompt(slides, density, brandName, toneGuideline, contentStandards),
+    jsonSchema: buildRewriteJsonSchema(),
+  })) as { slides?: DensityRewriteSlide[] }
+
+  if (!result.slides?.length) {
+    throw new Error('rewriteSlidesForDensity: Groq response had no slides')
+  }
+
+  // Headlines are the model's responsibility to pass through unchanged per
+  // the prompt, but re-anchoring to the original here removes any
+  // dependence on it actually complying — same defensive stance as
+  // trusting index-based lookups elsewhere in this codebase over trusting
+  // model output verbatim.
+  const byIndex = new Map(slides.map((s) => [s.index, s]))
+  return result.slides.map((rewritten) => {
+    const original = byIndex.get(rewritten.index)
+    return {
+      index: rewritten.index,
+      headline: original?.headline ?? rewritten.headline,
+      body: rewritten.body,
+    }
+  })
+}
