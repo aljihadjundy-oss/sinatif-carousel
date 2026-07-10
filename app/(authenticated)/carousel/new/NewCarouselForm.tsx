@@ -5,6 +5,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { BrandProfileSummary } from '@/lib/types'
+import DesignOptionsPanel, {
+  BackgroundMode,
+  Hierarchy,
+  IconSelection,
+  LayoutVariant,
+  TextDensity,
+} from '../[id]/DesignOptionsPanel'
 
 interface Props {
   profiles: BrandProfileSummary[]
@@ -41,8 +48,30 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [ideationLoading, setIdeationLoading] = useState(false)
   const [ideationError, setIdeationError] = useState<string | null>(null)
   const [selectingIdea, setSelectingIdea] = useState<string | null>(null)
-  const [stage, setStage] = useState<'idle' | 'script' | 'design'>('idle')
+  const [stage, setStage] = useState<'idle' | 'script' | 'options' | 'design'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  // Populated once script generation succeeds, whichever mode produced it —
+  // the design-options step below is shared across all three modes rather
+  // than duplicated per mode.
+  const [scriptedPostId, setScriptedPostId] = useState<string | null>(null)
+  const [optionsBrandColors, setOptionsBrandColors] = useState<Record<string, string> | null>(
+    null
+  )
+
+  // Design option state for the options step, mirroring
+  // RegenerateDesignButton.tsx's defaults except icon: "no icon" rather
+  // than "auto" is the deliberate first-generation default, per spec —
+  // auto-picking an icon before the user has seen any design felt more
+  // surprising than starting plain.
+  const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>('minimal')
+  const [colorScheme, setColorScheme] = useState('')
+  const [textDensity, setTextDensity] = useState<TextDensity>('standard')
+  const [hierarchy, setHierarchy] = useState<Hierarchy>('balanced')
+  const [iconSelection, setIconSelection] = useState<IconSelection>('none')
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('solid')
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
+  const [designLoadingLabel, setDesignLoadingLabel] = useState('')
 
   const loading = stage !== 'idle'
   const loadingLabel =
@@ -53,7 +82,7 @@ export default function NewCarouselForm({ profiles }: Props) {
       : stage === 'design'
         ? 'Membuat desain…'
         : mode === 'manual'
-          ? 'Save & Generate Design'
+          ? 'Save & Continue'
           : 'Generate Script'
 
   function profileLabel(p: BrandProfileSummary) {
@@ -85,25 +114,84 @@ export default function NewCarouselForm({ profiles }: Props) {
     setError(null)
   }
 
-  async function runDesignerAndRedirect(id: string) {
+  // Replaces the old auto-chain straight into designer generation with
+  // defaults: script generation (any of the 3 modes) now lands here
+  // instead, so the user sees DesignOptionsPanel — pre-filled with
+  // sensible defaults — before the first design is ever rendered, rather
+  // than only getting control on a later "Regenerate Design".
+  async function enterOptionsStage(id: string) {
+    setScriptedPostId(id)
+
+    if (brandProfileId) {
+      const { data: brand } = await supabase
+        .schema('carousel')
+        .from('brand_profiles')
+        .select('visual_style')
+        .eq('id', brandProfileId)
+        .maybeSingle()
+      const colors = (brand?.visual_style as { colors?: Record<string, string> } | null)?.colors
+      setOptionsBrandColors(colors ?? null)
+    }
+
+    setStage('options')
+  }
+
+  async function handleGenerateDesign() {
+    if (!scriptedPostId) return
+
     setStage('design')
+    setError(null)
+
+    let effectiveBackgroundUrl: string | null = null
+
+    if (backgroundMode === 'image' && backgroundFile) {
+      setDesignLoadingLabel('Mengunggah background…')
+      const formData = new FormData()
+      formData.append('post_id', scriptedPostId)
+      formData.append('file', backgroundFile)
+
+      const uploadRes = await fetch('/api/carousel/background-upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadRes.ok) {
+        const json = await uploadRes.json().catch(() => ({}))
+        setError(json.error ?? 'Background upload failed')
+        setStage('options')
+        return
+      }
+
+      const { url } = await uploadRes.json()
+      effectiveBackgroundUrl = url
+    }
+
+    setDesignLoadingLabel('Membuat desain…')
     const designRes = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post_id: id }),
+      body: JSON.stringify({
+        post_id: scriptedPostId,
+        layout_variant: layoutVariant,
+        color_scheme: colorScheme || null,
+        text_density: textDensity,
+        hierarchy: hierarchy,
+        background_image_url: effectiveBackgroundUrl,
+        icon_name: iconSelection === 'auto' ? null : iconSelection,
+      }),
     })
 
     if (!designRes.ok) {
       // Design generation failed, not script generation — the script step
-      // (if any ran) already succeeded by this point. Logged distinctly so
-      // this is never confused with a script-writer/Gemini failure. We
-      // still redirect: the script already exists, and the detail page
-      // offers a retry button for design generation.
+      // already succeeded by this point. Logged distinctly so this is
+      // never confused with a script-writer/Gemini failure. We still
+      // redirect: the script already exists, and the detail page offers
+      // a retry button for design generation.
       const json = await designRes.json().catch(() => ({}))
       console.error('Design generation failed:', json.error ?? designRes.statusText)
     }
 
-    router.push(`/carousel/${id}`)
+    router.push(`/carousel/${scriptedPostId}`)
   }
 
   async function handleAiSubmit() {
@@ -127,7 +215,7 @@ export default function NewCarouselForm({ profiles }: Props) {
     }
 
     const { id } = await scriptRes.json()
-    await runDesignerAndRedirect(id)
+    await enterOptionsStage(id)
   }
 
   async function handleManualSubmit() {
@@ -179,7 +267,7 @@ export default function NewCarouselForm({ profiles }: Props) {
       return
     }
 
-    await runDesignerAndRedirect(post.id)
+    await enterOptionsStage(post.id)
   }
 
   async function handleGenerateIdeas() {
@@ -234,7 +322,7 @@ export default function NewCarouselForm({ profiles }: Props) {
     }
 
     const { id } = await scriptRes.json()
-    await runDesignerAndRedirect(id)
+    await enterOptionsStage(id)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -249,6 +337,52 @@ export default function NewCarouselForm({ profiles }: Props) {
     } else {
       await handleManualSubmit()
     }
+  }
+
+  if (stage === 'options' || (stage === 'design' && scriptedPostId)) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Script ready — choose design options
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Sensible defaults are already picked. Adjust anything below, or just
+            generate the design as-is.
+          </p>
+        </div>
+
+        <DesignOptionsPanel
+          layoutVariant={layoutVariant}
+          onLayoutVariantChange={setLayoutVariant}
+          colorScheme={colorScheme}
+          onColorSchemeChange={setColorScheme}
+          textDensity={textDensity}
+          onTextDensityChange={setTextDensity}
+          hierarchy={hierarchy}
+          onHierarchyChange={setHierarchy}
+          iconSelection={iconSelection}
+          onIconSelectionChange={setIconSelection}
+          backgroundMode={backgroundMode}
+          onBackgroundModeChange={setBackgroundMode}
+          backgroundImageUrl={null}
+          backgroundFile={backgroundFile}
+          onBackgroundFileChange={setBackgroundFile}
+          brandColors={optionsBrandColors}
+          disabled={stage === 'design'}
+        />
+
+        <button
+          type="button"
+          onClick={handleGenerateDesign}
+          disabled={stage === 'design'}
+          className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+        >
+          {stage === 'design' ? designLoadingLabel || 'Membuat desain…' : 'Generate Design'}
+        </button>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      </div>
+    )
   }
 
   return (
