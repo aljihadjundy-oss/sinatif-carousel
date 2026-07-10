@@ -185,12 +185,18 @@ export async function loadFontsForBrand(fontConfig: FontConfig) {
   return [...primary, ...fallbacks]
 }
 
-export type LayoutVariant = 'minimal' | 'accent' | 'editorial_gradient' | 'flat_icon_list'
+export type LayoutVariant =
+  | 'minimal'
+  | 'accent'
+  | 'editorial_gradient'
+  | 'flat_icon_list'
+  | 'flat_mockup_card'
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'minimal',
   'accent',
   'editorial_gradient',
   'flat_icon_list',
+  'flat_mockup_card',
 ]
 
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -358,6 +364,30 @@ export function parseListItems(body: string): string[] | null {
   return null
 }
 
+// flat_mockup_card's centerpiece card shows one short "highlight" line.
+// There's no dedicated highlight field in the script data (script-writer
+// only produces headline + body per slide), so this pulls from the body
+// as a stand-in. A first version always used the body's first sentence,
+// but a real rendered test showed that reading as an awkward near-verbatim
+// repeat of the body paragraph directly above it (both start with the
+// same words). Using the LAST sentence instead reads more like a distinct
+// closing takeaway; single-sentence bodies fall back to the headline so
+// the card never just re-shows the entire body a second time. Capped
+// independently of BODY_CHAR_LIMIT since the card has much less width
+// than a full-slide paragraph.
+const CARD_HIGHLIGHT_CHAR_LIMIT = 90
+
+function extractCardHighlight(body: string, headline: string): string {
+  const sentences = body
+    .split('. ')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const source = sentences.length >= 2 ? sentences[sentences.length - 1] : headline
+  const text = source.replace(/\.$/, '')
+  if (text.length <= CARD_HIGHLIGHT_CHAR_LIMIT) return text
+  return `${text.slice(0, CARD_HIGHLIGHT_CHAR_LIMIT).trimEnd()}…`
+}
+
 export async function renderSlide(
   slide: Slide,
   total: number,
@@ -383,6 +413,9 @@ export async function renderSlide(
   // rather than growing a 3rd background-image code path for a layout
   // that's specifically meant not to use one.
   const isFlatIconList = variant === 'flat_icon_list'
+  // flat_mockup_card is likewise a flat/no-photo style, same reasoning as
+  // flat_icon_list above.
+  const isFlatMockupCard = variant === 'flat_mockup_card'
   const isAccent =
     variant === 'accent' || (variant === 'editorial_gradient' && !hasBackgroundImage)
   const icon =
@@ -391,9 +424,151 @@ export async function renderSlide(
         ? null
         : (iconChoice as IconName | null) ?? pickSlideIcon(slide.headline, slide.body, brandName)
       : null
-  const body = applyTextDensity(slide.body, textDensity, hasBackgroundImage && !isFlatIconList)
+  const body = applyTextDensity(
+    slide.body,
+    textDensity,
+    hasBackgroundImage && !isFlatIconList && !isFlatMockupCard
+  )
 
-  const content = isFlatIconList ? (
+  const content = isFlatMockupCard ? (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        backgroundColor: colors.bg,
+        color: colors.fg,
+        padding: 80,
+        fontFamily: fontConfig.bodyFamily,
+        overflow: 'hidden',
+      }}
+    >
+      {logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt=""
+          width={60}
+          height={60}
+          style={{ position: 'absolute', top: 40, right: 40, objectFit: 'contain' }}
+        />
+      )}
+
+      {/* Top meta row: uppercase label (brand name, falling back to a
+          generic tag when there's no brand) + "X OF N" counter. Reserves
+          extra right-side clearance (paddingRight beyond the container's
+          own 80px padding) so the counter never sits under the logo —
+          both naturally want the top-right corner, and this session has
+          already hit that exact overlap-bug class twice with
+          independently-positioned elements. Skipped the optional
+          feature/tag pill the spec offered as a maybe: with the label +
+          counter already occupying this row, a 3rd meta element here
+          would be redundant clutter rather than adding information. */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingRight: 80,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            fontSize: 20,
+            fontWeight: 700,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            opacity: 0.6,
+          }}
+        >
+          {brandName ?? 'CAROUSEL'}
+        </div>
+        <div style={{ display: 'flex', fontSize: 20, fontWeight: 600, opacity: 0.5 }}>
+          {slide.index} OF {total}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.headlineFamily,
+            fontWeight: fontConfig.headlineWeight,
+            fontSize: HEADLINE_FONT_SIZE[hierarchy],
+            lineHeight: 1.15,
+          }}
+        >
+          {slide.headline}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            fontFamily: fontConfig.bodyFamily,
+            fontWeight: fontConfig.bodyWeight,
+            fontSize: bodyFontSize(textDensity, hierarchy),
+            lineHeight: 1.4,
+            opacity: 0.85,
+          }}
+        >
+          {body}
+        </div>
+
+        {/* Centerpiece "mockup card" — a general highlight card, NOT
+            styled as a code editor (no traffic-light dots, no monospace
+            font). Content spans casual/corporate/educational brands, so
+            a code-editor skin would only read as on-brand for
+            Hexolution (the tech-focused one) and off-brand everywhere
+            else. A per-brand code-editor variant for Hexolution
+            specifically was explicitly optional in the spec ("could be
+            a nice touch") with the brand-agnostic version as the hard
+            requirement — skipped it to avoid a 2nd visual branch (and
+            2nd thing to keep in sync across preview generation, the
+            options UI, etc.) for a brand-specific nicety that wasn't
+            actually requested. */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: colors.accent,
+            borderRadius: 20,
+            padding: '32px 36px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              fontFamily: fontConfig.bodyFamily,
+              fontWeight: 600,
+              fontSize: 26,
+              lineHeight: 1.35,
+              color: '#FFFFFF',
+            }}
+          >
+            {extractCardHighlight(slide.body, slide.headline)}
+          </div>
+        </div>
+      </div>
+
+      {/* Purely decorative swipe cue — not functional, this is a static
+          image. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 8,
+          opacity: 0.6,
+        }}
+      >
+        <div style={{ display: 'flex', fontSize: 20, fontWeight: 600 }}>Swipe</div>
+        <LucideIcon name="ArrowRight" size={22} color={colors.fg} strokeWidth={2} />
+      </div>
+    </div>
+  ) : isFlatIconList ? (
     (() => {
       const listItems = parseListItems(slide.body)
       const singleIcon =

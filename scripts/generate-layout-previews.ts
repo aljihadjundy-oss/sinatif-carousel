@@ -66,14 +66,15 @@ async function buildSamplePhotoDataUri(): Promise<string> {
 // Which layouts get the sample photo vs. a solid background — matches
 // what each layout actually looks like in real use: accent's
 // image-background treatment and editorial_gradient are photo-first,
-// minimal and flat_icon_list are meant to be previewed in their normal
-// flat/no-photo form (flat_icon_list ignores background_image_url
-// entirely regardless, per its design).
+// minimal/flat_icon_list/flat_mockup_card are meant to be previewed in
+// their normal flat/no-photo form (both flat_* variants ignore
+// background_image_url entirely regardless, per their design).
 const USES_SAMPLE_PHOTO: Record<LayoutVariant, boolean> = {
   minimal: false,
   accent: true,
   editorial_gradient: true,
   flat_icon_list: false,
+  flat_mockup_card: false,
 }
 
 async function main() {
