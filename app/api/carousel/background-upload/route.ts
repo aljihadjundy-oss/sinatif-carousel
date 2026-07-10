@@ -40,7 +40,6 @@ export async function POST(request: Request) {
     .from('posts')
     .select('id')
     .eq('id', postId)
-    .eq('user_id', user.id)
     .maybeSingle()
 
   if (postErr) {
