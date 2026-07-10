@@ -143,7 +143,6 @@ export async function POST(request: Request) {
       'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset'
     )
     .eq('id', postId)
-    .eq('user_id', user.id)
     .maybeSingle()
 
   if (postErr) {

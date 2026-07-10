@@ -100,7 +100,6 @@ export async function POST(request: Request) {
     .from('brand_profiles')
     .select('id, name, tone_guideline, content_standards, target_audience_default')
     .eq('id', brandProfileId)
-    .eq('user_id', user.id)
     .maybeSingle()
 
   if (brandErr) {
