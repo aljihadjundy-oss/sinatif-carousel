@@ -15,13 +15,26 @@ export type LayoutVariant =
 // at runtime. imageOnly gates editorial_gradient out of the grid when
 // there's no background photo to apply it to (the designer route falls
 // back to accent-like rendering if it's ever submitted without one, but
-// there's no reason to offer it here in that case).
-const LAYOUT_OPTIONS: { key: LayoutVariant; name: string; imageOnly?: boolean }[] = [
+// there's no reason to offer it here in that case). ignoresBackgroundImage
+// flags the flat/no-photo layouts, which the designer route intentionally
+// ignores background_image_url for regardless of whether one's set — a
+// real report of "regenerated and got a plain solid background instead
+// of my photo" turned out to be exactly this (a flat_mockup_card post
+// whose brand palette's first color happened to be named "gray"), not a
+// bug in how the background URL is resolved/sent. The warning below the
+// Background section is the fix: surface this up front instead of
+// letting it look like a broken photo.
+const LAYOUT_OPTIONS: {
+  key: LayoutVariant
+  name: string
+  imageOnly?: boolean
+  ignoresBackgroundImage?: boolean
+}[] = [
   { key: 'minimal', name: 'Minimal' },
   { key: 'accent', name: 'Accent' },
   { key: 'editorial_gradient', name: 'Editorial (Gradient)', imageOnly: true },
-  { key: 'flat_icon_list', name: 'Flat Icon List' },
-  { key: 'flat_mockup_card', name: 'Flat Mockup Card' },
+  { key: 'flat_icon_list', name: 'Flat Icon List', ignoresBackgroundImage: true },
+  { key: 'flat_mockup_card', name: 'Flat Mockup Card', ignoresBackgroundImage: true },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
@@ -305,6 +318,13 @@ export default function DesignOptionsPanel({
         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
           Background
         </label>
+        {LAYOUT_OPTIONS.find((opt) => opt.key === layoutVariant)?.ignoresBackgroundImage && (
+          <p className="mb-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/30">
+            The selected layout ({LAYOUT_OPTIONS.find((opt) => opt.key === layoutVariant)?.name})
+            is a flat, no-photo style — any background image chosen below won&apos;t be used.
+            Pick Minimal, Accent, or Editorial (Gradient) to use a photo.
+          </p>
+        )}
         <div className="flex rounded-lg border border-gray-300 p-1 dark:border-gray-700">
           <button
             type="button"
