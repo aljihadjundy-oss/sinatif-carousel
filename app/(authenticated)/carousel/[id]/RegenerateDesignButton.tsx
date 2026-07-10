@@ -19,6 +19,7 @@ interface Props {
   initialHierarchy?: Hierarchy
   initialBackgroundImageUrl?: string | null
   initialIconName?: IconSelection
+  initialTypographyPreset?: string | null
   brandColors?: Record<string, string> | null
 }
 
@@ -31,6 +32,7 @@ export default function RegenerateDesignButton({
   initialHierarchy = 'balanced',
   initialBackgroundImageUrl = null,
   initialIconName = 'auto',
+  initialTypographyPreset = null,
   brandColors = null,
 }: Props) {
   const router = useRouter()
@@ -39,6 +41,9 @@ export default function RegenerateDesignButton({
   const [textDensity, setTextDensity] = useState<TextDensity>(initialTextDensity)
   const [hierarchy, setHierarchy] = useState<Hierarchy>(initialHierarchy)
   const [iconSelection, setIconSelection] = useState<IconSelection>(initialIconName)
+  const [typographyPreset, setTypographyPreset] = useState<string | null>(
+    initialTypographyPreset
+  )
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(
     initialBackgroundImageUrl ? 'image' : 'solid'
   )
@@ -88,6 +93,7 @@ export default function RegenerateDesignButton({
       hierarchy: hierarchy,
       background_image_url: effectiveBackgroundUrl,
       icon_name: iconSelection === 'auto' ? null : iconSelection,
+      typography_preset: typographyPreset,
     }
 
     // Gated behind NEXT_PUBLIC_DEBUG_DESIGNER rather than always-on: logs
@@ -136,6 +142,8 @@ export default function RegenerateDesignButton({
         onHierarchyChange={setHierarchy}
         iconSelection={iconSelection}
         onIconSelectionChange={setIconSelection}
+        typographyPreset={typographyPreset}
+        onTypographyPresetChange={setTypographyPreset}
         backgroundMode={backgroundMode}
         onBackgroundModeChange={setBackgroundMode}
         backgroundImageUrl={backgroundImageUrl}

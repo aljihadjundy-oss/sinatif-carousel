@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { ImageResponse } from 'next/og'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { ICON_NAMES, IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
+import { TYPOGRAPHY_PRESET_KEYS, getTypographyPreset } from '@/lib/typography-presets'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -548,6 +549,7 @@ export async function POST(request: Request) {
     hierarchy?: string
     background_image_url?: string | null
     icon_name?: string | null
+    typography_preset?: string | null
   }
   try {
     body = await request.json()
@@ -608,12 +610,24 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  if (
+    body.typography_preset !== undefined &&
+    body.typography_preset !== null &&
+    !TYPOGRAPHY_PRESET_KEYS.includes(body.typography_preset)
+  ) {
+    return NextResponse.json(
+      {
+        error: `typography_preset must be null or one of: ${TYPOGRAPHY_PRESET_KEYS.join(', ')}`,
+      },
+      { status: 400 }
+    )
+  }
 
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
     .select(
-      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name'
+      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset'
     )
     .eq('id', postId)
     .eq('user_id', user.id)
@@ -652,6 +666,12 @@ export async function POST(request: Request) {
     body.icon_name !== undefined
       ? (body.icon_name as IconName | 'none' | null)
       : (post.icon_name as IconName | 'none' | null)
+  // null = use the brand's default font mapping (BRAND_FONTS/DEFAULT_FONTS),
+  // a preset key = override both headline and body fonts for every slide.
+  const typographyPreset: string | null =
+    body.typography_preset !== undefined
+      ? body.typography_preset
+      : (post.typography_preset as string | null)
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -696,7 +716,12 @@ export async function POST(request: Request) {
       `designer: no font mapping for brand "${brandName}" — using default fonts`
     )
   }
-  let fontConfig = mappedFonts ?? DEFAULT_FONTS
+  // An explicit typography_preset overrides the brand's default font
+  // mapping entirely — chosen instead of merging per-field since presets
+  // are meant to replace the whole pairing (headline+body were picked as
+  // a set), not partially blend with the brand's normal fonts.
+  const presetFonts = getTypographyPreset(typographyPreset)
+  let fontConfig = presetFonts ?? mappedFonts ?? DEFAULT_FONTS
   const total = script.slides.length
 
   let fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
@@ -849,6 +874,7 @@ export async function POST(request: Request) {
       hierarchy: hierarchy,
       background_image_url: backgroundImageUrl,
       icon_name: iconChoice,
+      typography_preset: typographyPreset,
     })
     .eq('id', postId)
 
@@ -860,5 +886,6 @@ export async function POST(request: Request) {
     text_density: textDensity,
     hierarchy: hierarchy,
     background_image_url: backgroundImageUrl,
+    typography_preset: typographyPreset,
   })
 }

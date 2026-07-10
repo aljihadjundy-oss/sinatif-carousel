@@ -1,6 +1,7 @@
 'use client'
 
 import { ICON_NAMES, IconName, LucideIcon } from '@/lib/icons'
+import { TYPOGRAPHY_PRESETS } from '@/lib/typography-presets'
 
 export type LayoutVariant = 'minimal' | 'accent'
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -24,6 +25,8 @@ interface Props {
   onHierarchyChange: (value: Hierarchy) => void
   iconSelection: IconSelection
   onIconSelectionChange: (value: IconSelection) => void
+  typographyPreset: string | null
+  onTypographyPresetChange: (value: string | null) => void
   backgroundMode: BackgroundMode
   onBackgroundModeChange: (value: BackgroundMode) => void
   backgroundImageUrl: string | null
@@ -47,6 +50,8 @@ export default function DesignOptionsPanel({
   onHierarchyChange,
   iconSelection,
   onIconSelectionChange,
+  typographyPreset,
+  onTypographyPresetChange,
   backgroundMode,
   onBackgroundModeChange,
   backgroundImageUrl,
@@ -151,6 +156,74 @@ export default function DesignOptionsPanel({
               ) : (
                 <LucideIcon name={option} size={18} strokeWidth={2} />
               )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Typography
+        </label>
+        {/* Visual picker (thumbnail + name, radio-style selection) instead
+            of a plain dropdown, so users see the actual font pairing
+            rather than just a label — same selected/unselected border
+            treatment as the icon picker above for consistency. Thumbnails
+            are static PNGs committed under public/typography-previews/,
+            generated once by scripts/generate-typography-previews.ts —
+            never rendered at runtime. */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            onClick={() => onTypographyPresetChange(null)}
+            disabled={disabled}
+            className={`rounded-lg border p-1 text-left disabled:opacity-50 ${
+              typographyPreset === null
+                ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-500/10'
+                : 'border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+            }`}
+          >
+            <div className="w-full aspect-[400/250] rounded bg-gray-100 flex items-center justify-center dark:bg-gray-800">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Aa</span>
+            </div>
+            <p
+              className={`mt-1 text-[11px] font-medium truncate ${
+                typographyPreset === null
+                  ? 'text-blue-700 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              Brand Default
+            </p>
+          </button>
+
+          {TYPOGRAPHY_PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => onTypographyPresetChange(preset.key)}
+              disabled={disabled}
+              className={`rounded-lg border p-1 text-left disabled:opacity-50 ${
+                typographyPreset === preset.key
+                  ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-500/10'
+                  : 'border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/typography-previews/${preset.key}.png`}
+                alt={preset.name}
+                className="w-full aspect-[400/250] rounded object-cover border border-gray-200 dark:border-gray-700"
+              />
+              <p
+                className={`mt-1 text-[11px] font-medium truncate ${
+                  typographyPreset === preset.key
+                    ? 'text-blue-700 dark:text-blue-400'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}
+              >
+                {preset.name}
+              </p>
             </button>
           ))}
         </div>

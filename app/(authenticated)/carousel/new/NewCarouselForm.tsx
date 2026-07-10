@@ -69,6 +69,7 @@ export default function NewCarouselForm({ profiles }: Props) {
   const [textDensity, setTextDensity] = useState<TextDensity>('standard')
   const [hierarchy, setHierarchy] = useState<Hierarchy>('balanced')
   const [iconSelection, setIconSelection] = useState<IconSelection>('none')
+  const [typographyPreset, setTypographyPreset] = useState<string | null>(null)
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('solid')
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
   const [designLoadingLabel, setDesignLoadingLabel] = useState('')
@@ -178,6 +179,7 @@ export default function NewCarouselForm({ profiles }: Props) {
         hierarchy: hierarchy,
         background_image_url: effectiveBackgroundUrl,
         icon_name: iconSelection === 'auto' ? null : iconSelection,
+        typography_preset: typographyPreset,
       }),
     })
 
@@ -363,6 +365,8 @@ export default function NewCarouselForm({ profiles }: Props) {
           onHierarchyChange={setHierarchy}
           iconSelection={iconSelection}
           onIconSelectionChange={setIconSelection}
+          typographyPreset={typographyPreset}
+          onTypographyPresetChange={setTypographyPreset}
           backgroundMode={backgroundMode}
           onBackgroundModeChange={setBackgroundMode}
           backgroundImageUrl={null}
