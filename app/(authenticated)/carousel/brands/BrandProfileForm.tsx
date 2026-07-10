@@ -162,7 +162,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
             onChange={(e) => setName(e.target.value)}
             required
             placeholder="e.g. Sinatif Agency Brand"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
 
@@ -173,7 +173,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
           <select
             value={profileType}
             onChange={(e) => setProfileType(e.target.value as ProfileType)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
           >
             <option value="internal_bu">Internal BU</option>
             <option value="client">Client</option>
@@ -190,7 +190,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
               onChange={(e) =>
                 setBusinessUnit(e.target.value as typeof businessUnit)
               }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
             >
               {BUSINESS_UNITS.map((bu) => (
                 <option key={bu} value={bu}>
@@ -210,7 +210,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
             value={targetAudience}
             onChange={(e) => setTargetAudience(e.target.value)}
             placeholder="e.g. Marketing managers, 25–40"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
           />
         </div>
       </div>
@@ -224,7 +224,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
           onChange={(e) => setToneGuideline(e.target.value)}
           rows={3}
           placeholder="Describe the brand's tone of voice…"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
         />
       </div>
 
@@ -237,7 +237,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
           onChange={(e) => setContentStandards(e.target.value)}
           rows={3}
           placeholder="List content dos and don'ts, formatting rules…"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500"
         />
       </div>
 
@@ -253,7 +253,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
               alt="Current logo"
               className="w-10 h-10 object-contain rounded border border-gray-200 dark:border-gray-700"
             />
-            <span className="text-xs text-gray-400">Current logo — choose a file to replace it</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Current logo — choose a file to replace it</span>
           </div>
         )}
         <input
@@ -263,7 +263,7 @@ export default function BrandProfileForm({ existingProfile, onSaved, onCancel }:
           onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:file:bg-gray-800 dark:file:text-gray-300 dark:hover:file:bg-gray-700"
         />
-        <p className="mt-1 text-xs text-gray-400">PNG or SVG. Rendered on every slide.</p>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">PNG or SVG. Rendered on every slide.</p>
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

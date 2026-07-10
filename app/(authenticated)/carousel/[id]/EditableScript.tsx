@@ -123,7 +123,7 @@ export default function EditableScript({ postId, stageOutputId, title, slides }:
               key={slide.index}
               className="bg-white rounded-xl shadow p-5 dark:bg-gray-900"
             >
-              <p className="text-xs text-gray-400 mb-1 dark:text-gray-500">
+              <p className="text-xs text-gray-500 mb-1 dark:text-gray-500">
                 Slide {slide.index}
               </p>
               {editing ? (

@@ -27,7 +27,7 @@ export default function BrandProfilesClient({ profiles }: { profiles: BrandProfi
                   {p.business_unit ? ` · ${p.business_unit}` : ''}
                 </p>
                 {p.target_audience_default && (
-                  <p className="text-sm text-gray-400 mt-0.5 dark:text-gray-500">
+                  <p className="text-sm text-gray-500 mt-0.5 dark:text-gray-500">
                     Audience: {p.target_audience_default}
                   </p>
                 )}

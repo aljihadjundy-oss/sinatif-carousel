@@ -267,7 +267,7 @@ export default function RegenerateDesignButton({
                   alt="Current background"
                   className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-gray-700"
                 />
-                <span className="text-xs text-gray-400">Current background — choose a file to replace it</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Current background — choose a file to replace it</span>
               </div>
             )}
             <input
