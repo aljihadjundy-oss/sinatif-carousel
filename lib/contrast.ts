@@ -40,9 +40,15 @@ export function getLuminance(hexColor: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-// WCAG contrast ratio between two relative luminances:
+// WCAG contrast ratio between two hex colors:
 // https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio
-function contrastRatio(l1: number, l2: number): number {
+// Exported for cases beyond plain black/white text selection — e.g. a
+// layout template deciding whether an arbitrary brand accent color reads
+// clearly enough against a fixed (non-brand) surface color to use it
+// directly, falling back to a plain contrast-safe color otherwise.
+export function getContrastRatio(hexColorA: string, hexColorB: string): number {
+  const l1 = getLuminance(hexColorA)
+  const l2 = getLuminance(hexColorB)
   const lighter = Math.max(l1, l2)
   const darker = Math.min(l1, l2)
   return (lighter + 0.05) / (darker + 0.05)
@@ -52,9 +58,8 @@ function contrastRatio(l1: number, l2: number): number {
 // against the given background, per actual WCAG contrast ratios rather
 // than a fixed luminance threshold guess.
 export function getTextColorForBackground(bgHexColor: string): '#000000' | '#FFFFFF' {
-  const bgLuminance = getLuminance(bgHexColor)
-  const contrastWithBlack = contrastRatio(bgLuminance, getLuminance('#000000'))
-  const contrastWithWhite = contrastRatio(bgLuminance, getLuminance('#ffffff'))
+  const contrastWithBlack = getContrastRatio(bgHexColor, '#000000')
+  const contrastWithWhite = getContrastRatio(bgHexColor, '#ffffff')
   return contrastWithBlack >= contrastWithWhite ? '#000000' : '#FFFFFF'
 }
 

@@ -20,7 +20,7 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import { ImageResponse } from 'next/og'
 import { IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
-import { getTextColorForBackground, getTextColorFromImage } from '@/lib/contrast'
+import { getContrastRatio, getTextColorForBackground, getTextColorFromImage } from '@/lib/contrast'
 
 export interface Slide {
   index: number
@@ -99,6 +99,14 @@ const FALLBACK_WEIGHT: FontWeight = 400
 // fonts.googleapis.com/fonts.gstatic.com at request time. Every
 // (family, weight) pair used anywhere in BRAND_FONTS, DEFAULT_FONTS, or the
 // fallback must have an entry here.
+//
+// The 3 new-layout-template fonts (JetBrains Mono, Playfair Display, Caveat)
+// are .woff rather than .ttf — extracted from the @fontsource/* npm packages
+// (registry.npmjs.org is reachable in this environment; raw Google Fonts
+// endpoints are not) instead of hand-downloaded .ttf files. Confirmed via a
+// real ImageResponse render that satori accepts .woff data identically to
+// .ttf — loadLocalFont below just reads whatever file extension is named
+// here, no format-specific branching needed.
 export const FONT_FILES: Record<string, string> = {
   'Inter-400': 'inter-400.ttf',
   'Inter-600': 'inter-600.ttf',
@@ -110,6 +118,11 @@ export const FONT_FILES: Record<string, string> = {
   'Archivo Black-400': 'archivo-black-400.ttf',
   'Architects Daughter-400': 'architects-daughter-400.ttf',
   'Noto Sans-400': 'noto-sans-400.ttf',
+  'JetBrains Mono-400': 'jetbrains-mono-400.woff',
+  'JetBrains Mono-700': 'jetbrains-mono-700.woff',
+  'Playfair Display-400': 'playfair-display-400.woff',
+  'Playfair Display-700': 'playfair-display-700.woff',
+  'Caveat-700': 'caveat-700.woff',
 }
 
 const fontFileCache = new Map<string, ArrayBuffer>()
@@ -192,12 +205,14 @@ export type LayoutVariant =
   | 'editorial_gradient'
   | 'flat_icon_list'
   | 'flat_mockup_card'
+  | 'terminal_dev'
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'minimal',
   'accent',
   'editorial_gradient',
   'flat_icon_list',
   'flat_mockup_card',
+  'terminal_dev',
 ]
 
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -434,6 +449,35 @@ function extractCardHighlight(body: string, headline: string): string {
   return `${text.slice(0, CARD_HIGHLIGHT_CHAR_LIMIT).trimEnd()}…`
 }
 
+// terminal_dev's mock terminal window shows 4-6 short "code comment"-style
+// lines derived from the body — reuses parseListItems() (already shared
+// with flat_icon_list) when the body has real list structure, otherwise
+// splits on sentences so a single prose paragraph still becomes multiple
+// short lines instead of one long one wrapping inside a narrow monospace
+// column. Each line is capped independently of BODY_CHAR_LIMIT since the
+// terminal card is narrower than a full-slide paragraph.
+const TERMINAL_LINE_CHAR_LIMIT = 56
+const TERMINAL_MAX_LINES = 6
+
+function truncateTerminalLine(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= TERMINAL_LINE_CHAR_LIMIT) return trimmed
+  return `${trimmed.slice(0, TERMINAL_LINE_CHAR_LIMIT).trimEnd()}…`
+}
+
+function buildTerminalLines(body: string): string[] {
+  const listItems = parseListItems(body)
+  const rawLines =
+    listItems ??
+    body
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+  const lines = rawLines.slice(0, TERMINAL_MAX_LINES).map(truncateTerminalLine)
+  return lines.length > 0 ? lines : [truncateTerminalLine(body)]
+}
+
 export async function renderSlide(
   slide: Slide,
   total: number,
@@ -475,6 +519,10 @@ export async function renderSlide(
   // flat_mockup_card is likewise a flat/no-photo style, same reasoning as
   // flat_icon_list above.
   const isFlatMockupCard = variant === 'flat_mockup_card'
+  // terminal_dev is also a flat/no-photo style — its "screen" is a solid
+  // brand-color background with a mock terminal window as the visual
+  // anchor, not a photo.
+  const isTerminalDev = variant === 'terminal_dev'
   const isAccent =
     variant === 'accent' || (variant === 'editorial_gradient' && !hasBackgroundImage)
   const icon =
@@ -486,8 +534,23 @@ export async function renderSlide(
   const body = applyTextDensity(
     slide.body,
     textDensity,
-    hasBackgroundImage && !isFlatIconList && !isFlatMockupCard
+    hasBackgroundImage && !isFlatIconList && !isFlatMockupCard && !isTerminalDev
   )
+  // Fixed (not brand-derived) dark background for the mock terminal window
+  // — a real terminal reads as a terminal specifically because it's dark
+  // regardless of the slide's brand color, and fixing it means the ordinary
+  // line color below can be computed once rather than depend on whichever
+  // brand palette happens to be active.
+  const TERMINAL_BG = '#0d1117'
+  const terminalLineColor = getTextColorForBackground(TERMINAL_BG)
+  // The highlighted last terminal line uses the brand's accent color for
+  // flavor, but only when that accent actually reads against the fixed
+  // dark terminal background — falls back to the same safe line color
+  // otherwise, rather than trusting an arbitrary brand color to always be
+  // light enough (the exact class of assumption that caused the invisible-
+  // text bugs PR #47 fixed).
+  const terminalHighlightColor =
+    getContrastRatio(colors.accent, TERMINAL_BG) >= 3 ? colors.accent : terminalLineColor
 
   const content = isFlatMockupCard ? (
     <div
@@ -1015,6 +1078,176 @@ export async function renderSlide(
         {slideNumberBadge(slide, total, colors, variant, true)}
       </div>
     </div>
+  ) : isTerminalDev ? (
+    (() => {
+      const terminalBorderColor =
+        terminalLineColor === '#FFFFFF' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'
+      const terminalLines = buildTerminalLines(body)
+      const paddedIndex = String(slide.index).padStart(2, '0')
+      const paddedTotal = String(total).padStart(2, '0')
+
+      return (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            backgroundColor: colors.bg,
+            color: colors.fg,
+            padding: 80,
+            fontFamily: fontConfig.bodyFamily,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: 'JetBrains Mono',
+                  fontWeight: 700,
+                  fontSize: 20,
+                  letterSpacing: 3,
+                  textTransform: 'uppercase',
+                  opacity: 0.7,
+                }}
+              >
+                {brandName ?? 'CAROUSEL'}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: 'JetBrains Mono',
+                  fontWeight: 700,
+                  fontSize: 20,
+                  opacity: 0.6,
+                }}
+              >
+                {paddedIndex} OF {paddedTotal}
+              </div>
+            </div>
+
+            {/* Bordered tag box — dark bg (matches the terminal window
+                below) with a light 1px border, monospace uppercase, in
+                the style of a code "feature flag" comment. */}
+            <div
+              style={{
+                display: 'flex',
+                alignSelf: 'flex-start',
+                backgroundColor: TERMINAL_BG,
+                border: `1px solid ${terminalBorderColor}`,
+                borderRadius: 6,
+                padding: '8px 16px',
+                fontFamily: 'JetBrains Mono',
+                fontWeight: 700,
+                fontSize: 18,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: terminalLineColor,
+              }}
+            >
+              Feature {paddedIndex} / Topic
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: fontConfig.headlineFamily,
+                fontWeight: fontConfig.headlineWeight,
+                fontSize: HEADLINE_FONT_SIZE[hierarchy],
+                lineHeight: 1.15,
+              }}
+            >
+              {slide.headline}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: fontConfig.bodyFamily,
+                fontWeight: fontConfig.bodyWeight,
+                fontSize: bodyFontSize(textDensity, hierarchy),
+                lineHeight: 1.4,
+                opacity: 0.85,
+              }}
+            >
+              {body}
+            </div>
+          </div>
+
+          {/* Mock terminal window — the visual anchor. Fixed dark bg
+              regardless of brand color (see TERMINAL_BG above), window
+              chrome dots use the conventional macOS red/yellow/green
+              (decorative UI convention, not text — no contrast concern). */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: TERMINAL_BG,
+              borderRadius: 16,
+              padding: '24px 28px',
+              gap: 18,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', width: 14, height: 14, borderRadius: 9999, backgroundColor: '#ff5f56' }} />
+              <div style={{ display: 'flex', width: 14, height: 14, borderRadius: 9999, backgroundColor: '#ffbd2e' }} />
+              <div style={{ display: 'flex', width: 14, height: 14, borderRadius: 9999, backgroundColor: '#27c93f' }} />
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 16,
+                  color: terminalLineColor,
+                  opacity: 0.55,
+                  marginLeft: 8,
+                }}
+              >
+                slide-{slide.index}.ts
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {terminalLines.map((line, i) => {
+                const isLast = i === terminalLines.length - 1
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      fontFamily: 'JetBrains Mono',
+                      fontWeight: isLast ? 700 : 400,
+                      fontSize: 22,
+                      color: isLast ? terminalHighlightColor : terminalLineColor,
+                      opacity: isLast ? 1 : 0.85,
+                    }}
+                  >
+                    {isLast ? '# ' : '- '}
+                    {line}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', fontFamily: 'JetBrains Mono', fontSize: 18, opacity: 0.6 }}>
+              {paddedIndex} / {paddedTotal}
+            </div>
+            <div style={{ display: 'flex', fontFamily: 'JetBrains Mono', fontSize: 18, opacity: 0.6 }}>
+              SWIPE →
+            </div>
+          </div>
+        </div>
+      )
+    })()
   ) : (
     <div
       style={{
@@ -1109,6 +1342,23 @@ export async function renderSlide(
     </div>
   )
 
-  const image = new ImageResponse(content, { width: 1080, height: 1350, fonts })
+  // Extra font families beyond the brand's headline/body pair (already in
+  // `fonts`) are loaded here, only for the template that actually needs
+  // them, rather than always loading every template-specific font up
+  // front — terminal_dev is the only current variant that needs one
+  // (JetBrains Mono for labels/terminal content).
+  const templateFonts: Awaited<ReturnType<typeof loadFontsForBrand>> = []
+  if (isTerminalDev) {
+    templateFonts.push(
+      { name: 'JetBrains Mono', weight: 400, style: 'normal', data: await loadLocalFont('JetBrains Mono', 400) },
+      { name: 'JetBrains Mono', weight: 700, style: 'normal', data: await loadLocalFont('JetBrains Mono', 700) }
+    )
+  }
+
+  const image = new ImageResponse(content, {
+    width: 1080,
+    height: 1350,
+    fonts: [...fonts, ...templateFonts],
+  })
   return Buffer.from(await image.arrayBuffer())
 }

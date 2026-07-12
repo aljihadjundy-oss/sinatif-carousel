@@ -9,6 +9,7 @@ export type LayoutVariant =
   | 'editorial_gradient'
   | 'flat_icon_list'
   | 'flat_mockup_card'
+  | 'terminal_dev'
 
 // Thumbnails are static PNGs committed under public/layout-previews/,
 // generated once by scripts/generate-layout-previews.ts — never rendered
@@ -35,6 +36,7 @@ const LAYOUT_OPTIONS: {
   { key: 'editorial_gradient', name: 'Editorial (Gradient)', imageOnly: true },
   { key: 'flat_icon_list', name: 'Flat Icon List', ignoresBackgroundImage: true },
   { key: 'flat_mockup_card', name: 'Flat Mockup Card', ignoresBackgroundImage: true },
+  { key: 'terminal_dev', name: 'Terminal Dev', ignoresBackgroundImage: true },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
