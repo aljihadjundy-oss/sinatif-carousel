@@ -20,6 +20,7 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import { ImageResponse } from 'next/og'
 import { IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
+import { getTextColorForBackground, getTextColorFromImage } from '@/lib/contrast'
 
 export interface Slide {
   index: number
@@ -218,15 +219,22 @@ export function pickColors(visualStyle: VisualStyle | null, colorScheme: string 
     const rest = entries.filter(([name]) => name !== colorScheme).map(([, v]) => v)
     return {
       bg,
-      fg: rest[rest.length - 1] ?? '#ffffff',
+      // fg used to be "whatever color happens to be last in the brand's
+      // palette" — worked by luck as long as that landed on something
+      // dark/light-contrasting with bg. Deriving it from bg's actual
+      // luminance instead fixes the real case this produced: a palette
+      // ordered such that the "last" color was itself light, rendered on
+      // an equally light bg.
+      fg: getTextColorForBackground(bg),
       accent: rest[0] ?? bg,
     }
   }
 
   const colors = entries.map(([, v]) => v)
+  const bg = colors[0] ?? '#111827'
   return {
-    bg: colors[0] ?? '#111827',
-    fg: colors[colors.length - 1] ?? '#ffffff',
+    bg,
+    fg: getTextColorForBackground(bg),
     accent: colors[1] ?? colors[0] ?? '#2563eb',
   }
 }
@@ -339,7 +347,10 @@ function slideNumberBadge(
         display: 'flex',
         alignItems: 'center',
         backgroundColor: colors.accent,
-        color: colors.bg,
+        // Was hardcoded to colors.bg — assumed bg and accent always
+        // contrast, which broke for palettes where they're both
+        // dark/light. Deriving from accent's actual luminance instead.
+        color: getTextColorForBackground(colors.accent),
         fontSize: 24,
         fontWeight: 700,
         padding: '8px 20px',
@@ -438,6 +449,19 @@ export async function renderSlide(
   iconChoice: IconName | 'none' | null
 ) {
   const hasBackgroundImage = !!backgroundImageUrl
+  // Text/icon color for anything rendered directly on a colors.accent
+  // background (badges, the mockup-card highlight box, the image-bg
+  // bottom block) — computed once here instead of hardcoding '#FFFFFF'
+  // at each call site, since accent is an arbitrary brand color that can
+  // itself be light.
+  const accentTextColor = getTextColorForBackground(colors.accent)
+  // Text sitting directly on the photo (editorial_gradient's dark-gradient
+  // scrim) gets its color from the image itself rather than from the
+  // brand palette — phase 1 of getTextColorFromImage always returns
+  // white (a reasonable assumption paired with the dark scrim beneath the
+  // text), phase 2 can sample the actual image without any call site here
+  // needing to change.
+  const imageTextColor = getTextColorFromImage(backgroundImageUrl)
   // editorial_gradient only makes sense with a photo — falling back to
   // the accent treatment (rather than erroring) if it's ever picked
   // without background_image_url set keeps this route lenient the same
@@ -580,7 +604,7 @@ export async function renderSlide(
               fontWeight: 600,
               fontSize: 26,
               lineHeight: 1.35,
-              color: '#FFFFFF',
+              color: accentTextColor,
             }}
           >
             {extractCardHighlight(slide.body, slide.headline)}
@@ -682,7 +706,7 @@ export async function renderSlide(
               justifyContent: 'center',
             }}
           >
-            <LucideIcon name="CheckCircle" size={32} color={colors.bg} strokeWidth={2} />
+            <LucideIcon name="CheckCircle" size={32} color={accentTextColor} strokeWidth={2} />
           </div>
 
           {slideNumberBadge(slide, total, colors, variant)}
@@ -712,7 +736,7 @@ export async function renderSlide(
                         height: 40,
                         borderRadius: 9999,
                         backgroundColor: colors.accent,
-                        color: colors.bg,
+                        color: accentTextColor,
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: 18,
@@ -827,7 +851,7 @@ export async function renderSlide(
       {/* Purely decorative corner cue — not functional navigation, this
           is a static image. */}
       <div style={{ position: 'absolute', bottom: 40, right: 40, display: 'flex', opacity: 0.8 }}>
-        <LucideIcon name="ArrowRight" size={32} color="#FFFFFF" strokeWidth={2} />
+        <LucideIcon name="ArrowRight" size={32} color={imageTextColor} strokeWidth={2} />
       </div>
 
       {/* Large stylized slide number as a design element (low opacity,
@@ -859,7 +883,7 @@ export async function renderSlide(
             fontWeight: 700,
             fontSize: 120,
             lineHeight: 1,
-            color: '#FFFFFF',
+            color: imageTextColor,
             opacity: 0.35,
           }}
         >
@@ -867,7 +891,7 @@ export async function renderSlide(
         </div>
         {icon && (
           <div style={{ display: 'flex' }}>
-            <LucideIcon name={icon} size={44} color="#FFFFFF" strokeWidth={2} />
+            <LucideIcon name={icon} size={44} color={imageTextColor} strokeWidth={2} />
           </div>
         )}
         <div
@@ -877,7 +901,7 @@ export async function renderSlide(
             fontWeight: fontConfig.headlineWeight,
             fontSize: HEADLINE_FONT_SIZE[hierarchy],
             lineHeight: 1.15,
-            color: '#FFFFFF',
+            color: imageTextColor,
           }}
         >
           {slide.headline}
@@ -889,7 +913,7 @@ export async function renderSlide(
             fontWeight: fontConfig.bodyWeight,
             fontSize: imageBgBodyFontSize(textDensity, hierarchy, body.length),
             lineHeight: 1.35,
-            color: '#FFFFFF',
+            color: imageTextColor,
             opacity: 0.9,
           }}
         >
@@ -949,7 +973,7 @@ export async function renderSlide(
           width: 1080,
           height: BOTTOM_BLOCK_HEIGHT,
           backgroundColor: colors.accent,
-          color: '#FFFFFF',
+          color: accentTextColor,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -959,11 +983,11 @@ export async function renderSlide(
       >
         {isAccent && icon && (
           <div style={{ display: 'flex' }}>
-            <LucideIcon name={icon} size={44} color="#FFFFFF" strokeWidth={2} />
+            <LucideIcon name={icon} size={44} color={accentTextColor} strokeWidth={2} />
           </div>
         )}
         {isAccent && (
-          <div style={{ display: 'flex', width: 100, height: 5, backgroundColor: '#FFFFFF' }} />
+          <div style={{ display: 'flex', width: 100, height: 5, backgroundColor: accentTextColor }} />
         )}
         <div
           style={{
