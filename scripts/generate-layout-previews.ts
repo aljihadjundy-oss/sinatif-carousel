@@ -75,6 +75,7 @@ const USES_SAMPLE_PHOTO: Record<LayoutVariant, boolean> = {
   editorial_gradient: true,
   flat_icon_list: false,
   flat_mockup_card: false,
+  terminal_dev: false,
 }
 
 async function main() {
