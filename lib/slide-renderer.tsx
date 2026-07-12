@@ -20,7 +20,12 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import { ImageResponse } from 'next/og'
 import { IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
-import { getContrastRatio, getTextColorForBackground, getTextColorFromImage } from '@/lib/contrast'
+import {
+  getContrastRatio,
+  getLuminance,
+  getTextColorForBackground,
+  getTextColorFromImage,
+} from '@/lib/contrast'
 
 export interface Slide {
   index: number
@@ -206,6 +211,7 @@ export type LayoutVariant =
   | 'flat_icon_list'
   | 'flat_mockup_card'
   | 'terminal_dev'
+  | 'elegant_promo'
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'minimal',
   'accent',
@@ -213,6 +219,7 @@ export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'flat_icon_list',
   'flat_mockup_card',
   'terminal_dev',
+  'elegant_promo',
 ]
 
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -551,6 +558,24 @@ export async function renderSlide(
   // text bugs PR #47 fixed).
   const terminalHighlightColor =
     getContrastRatio(colors.accent, TERMINAL_BG) >= 3 ? colors.accent : terminalLineColor
+
+  // elegant_promo is a light-cream palette by design, independent of
+  // whichever bg the brand's colorScheme/pickColors resolved to — reuses
+  // the brand's bg only when it's already light enough to read as
+  // "cream-like", otherwise falls back to a fixed off-white rather than
+  // rendering e.g. Hexolution's dark charcoal bg for a template whose
+  // whole aesthetic depends on being light.
+  const isElegantPromo = variant === 'elegant_promo'
+  const ELEGANT_PROMO_FALLBACK_BG = '#F7F3EE'
+  const promoBg = getLuminance(colors.bg) > 0.75 ? colors.bg : ELEGANT_PROMO_FALLBACK_BG
+  const promoTextColor = getTextColorForBackground(promoBg)
+  // The accent color is used directly for the script-style tagline/CTA
+  // when it reads clearly against the cream bg; otherwise falls back to
+  // the plain contrast-safe text color, same reasoning as
+  // terminalHighlightColor above — never trust an arbitrary brand color
+  // to be readable against a fixed surface without checking.
+  const promoAccentColor =
+    getContrastRatio(colors.accent, promoBg) >= 3 ? colors.accent : promoTextColor
 
   const content = isFlatMockupCard ? (
     <div
@@ -1248,6 +1273,209 @@ export async function renderSlide(
         </div>
       )
     })()
+  ) : isElegantPromo ? (
+    (() => {
+      const listItems = parseListItems(body)
+      // Splits the headline into two lines — first half bold serif,
+      // second half regular serif, per the reference design's mixed-
+      // weight heading. A single-word headline just renders as one bold
+      // line rather than an empty second line.
+      const words = slide.headline.split(' ')
+      const mid = Math.max(1, Math.ceil(words.length / 2))
+      const headlineLine1 = words.slice(0, mid).join(' ')
+      const headlineLine2 = words.slice(mid).join(' ')
+      // No dedicated tagline field in the script data, same situation
+      // extractCardHighlight() already solves for flat_mockup_card — reused
+      // here for the script-font accent line rather than inventing a 2nd
+      // "pull a short line out of body/headline" heuristic.
+      const tagline = extractCardHighlight(body, slide.headline)
+      const badgeText = `${slide.index}/${total}`
+      const accentTextOnPromoAccent = getTextColorForBackground(colors.accent)
+
+      return (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            backgroundColor: promoBg,
+            color: promoTextColor,
+            padding: 80,
+            fontFamily: fontConfig.bodyFamily,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Decorative organic shapes in 2 corners — plain circles (Satori
+              has no SVG blob/path support), low opacity so they read as
+              background texture rather than competing with the content. */}
+          <div
+            style={{
+              position: 'absolute',
+              top: -120,
+              left: -120,
+              width: 300,
+              height: 300,
+              borderRadius: 9999,
+              backgroundColor: colors.accent,
+              opacity: 0.15,
+              display: 'flex',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              bottom: -160,
+              right: -160,
+              width: 380,
+              height: 380,
+              borderRadius: 9999,
+              backgroundColor: colors.accent,
+              opacity: 0.12,
+              display: 'flex',
+            }}
+          />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', fontSize: 24, color: promoAccentColor }}>*</div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontSize: 20,
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  textTransform: 'uppercase',
+                  opacity: 0.7,
+                }}
+              >
+                {brandName ?? 'BRAND'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: 'Playfair Display',
+                  fontWeight: 700,
+                  fontSize: HEADLINE_FONT_SIZE[hierarchy],
+                  lineHeight: 1.15,
+                }}
+              >
+                {headlineLine1}
+              </div>
+              {headlineLine2 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    fontFamily: 'Playfair Display',
+                    fontWeight: 400,
+                    fontSize: HEADLINE_FONT_SIZE[hierarchy],
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {headlineLine2}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', fontSize: 20, color: promoAccentColor }}>*</div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: 'Caveat',
+                  fontWeight: 700,
+                  fontSize: 44,
+                  color: promoAccentColor,
+                }}
+              >
+                {tagline}
+              </div>
+              <div style={{ display: 'flex', fontSize: 20, color: promoAccentColor }}>*</div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: fontConfig.bodyFamily,
+                fontWeight: fontConfig.bodyWeight,
+                fontSize: bodyFontSize(textDensity, hierarchy),
+                lineHeight: 1.4,
+                opacity: 0.85,
+              }}
+            >
+              {body}
+            </div>
+
+            {listItems && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {listItems.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexShrink: 0,
+                        width: 36,
+                        height: 36,
+                        borderRadius: 9999,
+                        backgroundColor: colors.accent,
+                        color: accentTextOnPromoAccent,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 16,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                    <div style={{ display: 'flex', fontSize: 24, opacity: 0.85 }}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Badge/seal — plain circle with a border matching the page
+                bg (reads as an inset ring), not the scalloped-edge shape
+                from the reference (Satori has no clip-path/SVG path
+                support for that). */}
+            <div
+              style={{
+                display: 'flex',
+                width: 72,
+                height: 72,
+                borderRadius: 9999,
+                backgroundColor: colors.accent,
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: `3px solid ${promoBg}`,
+              }}
+            >
+              <div style={{ display: 'flex', fontSize: 16, fontWeight: 700, color: accentTextOnPromoAccent }}>
+                {badgeText}
+              </div>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                fontSize: 20,
+                fontWeight: 700,
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: promoAccentColor,
+              }}
+            >
+              TAP TO JOIN →
+            </div>
+          </div>
+        </div>
+      )
+    })()
   ) : (
     <div
       style={{
@@ -1345,13 +1573,31 @@ export async function renderSlide(
   // Extra font families beyond the brand's headline/body pair (already in
   // `fonts`) are loaded here, only for the template that actually needs
   // them, rather than always loading every template-specific font up
-  // front — terminal_dev is the only current variant that needs one
-  // (JetBrains Mono for labels/terminal content).
+  // front.
   const templateFonts: Awaited<ReturnType<typeof loadFontsForBrand>> = []
   if (isTerminalDev) {
     templateFonts.push(
       { name: 'JetBrains Mono', weight: 400, style: 'normal', data: await loadLocalFont('JetBrains Mono', 400) },
       { name: 'JetBrains Mono', weight: 700, style: 'normal', data: await loadLocalFont('JetBrains Mono', 700) }
+    )
+  }
+  if (isElegantPromo) {
+    // Same "register a broad-coverage fallback under the font's own name"
+    // requirement documented on loadFontsForBrand above applies here too.
+    // Confirmed necessary by a real render: the original decorative marks
+    // (✳, U+2733) are covered by neither Playfair Display nor Caveat, and
+    // without a same-name fallback registered they silently rendered as
+    // nothing rather than erroring — switched those marks to a plain "*"
+    // (always covered) but kept this fallback registration, since
+    // LLM-generated headline/body text can still contain other
+    // punctuation these decorative fonts don't cover.
+    const fallbackData = await loadLocalFont(FALLBACK_FAMILY, FALLBACK_WEIGHT)
+    templateFonts.push(
+      { name: 'Playfair Display', weight: 400, style: 'normal', data: await loadLocalFont('Playfair Display', 400) },
+      { name: 'Playfair Display', weight: 700, style: 'normal', data: await loadLocalFont('Playfair Display', 700) },
+      { name: 'Playfair Display', weight: FALLBACK_WEIGHT, style: 'normal', data: fallbackData },
+      { name: 'Caveat', weight: 700, style: 'normal', data: await loadLocalFont('Caveat', 700) },
+      { name: 'Caveat', weight: FALLBACK_WEIGHT, style: 'normal', data: fallbackData }
     )
   }
 

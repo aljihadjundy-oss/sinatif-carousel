@@ -10,6 +10,7 @@ export type LayoutVariant =
   | 'flat_icon_list'
   | 'flat_mockup_card'
   | 'terminal_dev'
+  | 'elegant_promo'
 
 // Thumbnails are static PNGs committed under public/layout-previews/,
 // generated once by scripts/generate-layout-previews.ts — never rendered
@@ -37,6 +38,7 @@ const LAYOUT_OPTIONS: {
   { key: 'flat_icon_list', name: 'Flat Icon List', ignoresBackgroundImage: true },
   { key: 'flat_mockup_card', name: 'Flat Mockup Card', ignoresBackgroundImage: true },
   { key: 'terminal_dev', name: 'Terminal Dev', ignoresBackgroundImage: true },
+  { key: 'elegant_promo', name: 'Elegant Promo', ignoresBackgroundImage: true },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
