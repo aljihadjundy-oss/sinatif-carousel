@@ -17,7 +17,7 @@ import {
   pickColors,
   renderSlide,
 } from '@/lib/slide-renderer'
-import { DesignOptions, SlideOverride, resolveSlideDesign } from '@/lib/slideDesign'
+import { DesignOptions, SlideOverride, reindexSlideOverrides, resolveSlideDesign } from '@/lib/slideDesign'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -28,6 +28,15 @@ export const runtime = 'nodejs'
 // (non-Fluid-Compute) Hobby-plan function.
 // https://vercel.com/docs/functions/configuring-functions/duration
 export const maxDuration = 60
+
+// Per-slide overrides (slide_overrides) always go through this same
+// whole-post route rather than a dedicated single-slide render endpoint —
+// checked before building the feature: no such endpoint exists anywhere
+// in this app, every design change (layout, color, background, and now
+// per-slide overrides) already regenerates the full carousel through
+// here. Adding a single-slide fast path was explicitly out of scope for
+// this feature; a per-slide override still costs a full regenerate, just
+// like every other design option change already does.
 
 interface Slide {
   index: number
@@ -208,7 +217,11 @@ export async function POST(request: Request) {
     body.typography_preset !== undefined
       ? body.typography_preset
       : (post.typography_preset as string | null)
-  const slideOverrides: SlideOverride[] =
+  // Reassigned once `total` (the current slide count) is known below —
+  // reindexSlideOverrides() then drops any override whose slideIndex no
+  // longer corresponds to a real slide (e.g. the script was edited down
+  // to fewer slides between the override being set and this regenerate).
+  let slideOverrides: SlideOverride[] =
     body.slide_overrides !== undefined
       ? body.slide_overrides
       : ((post.slide_overrides as SlideOverride[] | null) ?? [])
@@ -371,6 +384,21 @@ export async function POST(request: Request) {
   const presetFonts = getTypographyPreset(typographyPreset)
   let fontConfig = presetFonts ?? mappedFonts ?? DEFAULT_FONTS
   const total = slides.length
+  // Edge case: the script can be edited to a different slide count
+  // between when an override was set and this regenerate (EditableScript's
+  // "Save & Regenerate Design" reuses this same route) — drop any
+  // override whose slideIndex is now out of range rather than carrying a
+  // silently-orphaned entry forward that could reattach itself to
+  // unrelated content if the slide count ever comes back up to cover
+  // that index again.
+  const reindexedSlideOverrides = reindexSlideOverrides(slideOverrides, total)
+  if (reindexedSlideOverrides.length !== slideOverrides.length) {
+    console.log(
+      `designer: dropped ${slideOverrides.length - reindexedSlideOverrides.length} orphaned ` +
+        `slide_overrides entries for post ${postId} (slide count is now ${total})`
+    )
+  }
+  slideOverrides = reindexedSlideOverrides
 
   let fonts: Awaited<ReturnType<typeof loadFontsForBrand>>
   try {
