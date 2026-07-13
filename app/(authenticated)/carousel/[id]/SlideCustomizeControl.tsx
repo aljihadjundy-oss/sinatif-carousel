@@ -85,25 +85,40 @@ export default function SlideCustomizeControl({
 
       {expanded && (
         <div className="mt-1.5 space-y-1.5 rounded-lg border border-gray-200 p-2 dark:border-gray-700">
-          <div>
-            <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">
-              Color Scheme
-            </label>
-            <select
-              value={override?.colorScheme ?? DEFAULT_OPTION_VALUE}
-              onChange={(e) => handleColorSchemeChange(e.target.value)}
-              disabled={disabled}
-              className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
-            >
-              <option value={DEFAULT_OPTION_VALUE}>Sama seperti default</option>
-              {brandColors &&
-                Object.keys(brandColors).map((name) => (
+          {/* Bug found via live data: a real post's brand had no
+              visual_style at all (visual_style: null), so this select
+              rendered with nothing but the no-op "Sama seperti default"
+              option — selecting a color scheme was silently impossible,
+              not broken merge/render logic. DesignOptionsPanel's
+              post-level Color Scheme control already guards the same way
+              (hides the whole block rather than rendering an empty
+              select); this now matches it instead of misleadingly
+              implying the control works when there's no palette to
+              choose from. */}
+          {brandColors && Object.keys(brandColors).length > 0 ? (
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">
+                Color Scheme
+              </label>
+              <select
+                value={override?.colorScheme ?? DEFAULT_OPTION_VALUE}
+                onChange={(e) => handleColorSchemeChange(e.target.value)}
+                disabled={disabled}
+                className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
+              >
+                <option value={DEFAULT_OPTION_VALUE}>Sama seperti default</option>
+                {Object.keys(brandColors).map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
                 ))}
-            </select>
-          </div>
+              </select>
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400 dark:text-gray-500">
+              Brand ini belum punya palet warna, jadi color scheme tidak bisa di-override.
+            </p>
+          )}
 
           <div>
             <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">
