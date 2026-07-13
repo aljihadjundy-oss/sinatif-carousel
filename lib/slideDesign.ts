@@ -25,6 +25,21 @@ export interface SlideOverride {
   // is read from untrusted input (the designer route), not re-declared
   // as its own union here to avoid the two drifting apart.
   layoutTemplate?: LayoutVariant
+  // Granular per-element color overrides, applied on top of whichever
+  // {bg, fg, accent} colorScheme (or its default) already resolved —
+  // see applyCustomColors() below. Unlike every other SlideOverride
+  // field, this has no equivalent post-level default to merge against
+  // (there's no post-level "custom colors" concept), so it isn't part
+  // of DesignOptions/resolveSlideDesign()'s merge; the designer route
+  // applies it as a separate final step per slide.
+  customColors?: SlideCustomColors
+}
+
+export interface SlideCustomColors {
+  fontColor?: string
+  backgroundColor?: string
+  shapeColor?: string
+  iconColor?: string
 }
 
 export interface DesignOptions {
@@ -49,6 +64,44 @@ export function resolveSlideDesign(
     textDensity: override.textDensity ?? defaultDesign.textDensity,
     backgroundImageUrl: override.backgroundImageUrl ?? defaultDesign.backgroundImageUrl,
     layoutTemplate: override.layoutTemplate ?? defaultDesign.layoutTemplate,
+  }
+}
+
+export interface ResolvedSlideColors {
+  bg: string
+  fg: string
+  accent: string
+  // Only the layout's standalone topical icon (the one rendered directly
+  // on the page/card background — see renderSlide's iconColor param in
+  // lib/slide-renderer.tsx) reads this. Icons embedded inside a colored
+  // badge/block (the seal badge, numbered list markers, the image-
+  // background bottom block's icon, etc.) stay locked to that
+  // container's own contrast-computed color regardless of iconColor —
+  // those aren't "the icon color" as an independent choice, they're a
+  // specific element's text-on-a-known-background problem that
+  // getTextColorForBackground() already solves safely, and letting an
+  // arbitrary manual color override that specific computation would
+  // reopen the exact invisible-icon failure mode PR #47 fixed.
+  icon: string
+}
+
+// Applies granular per-element overrides on top of whichever {bg, fg,
+// accent} a colorScheme (or the brand/post default) already resolved to
+// — per-field: an unset customColors field falls back to the preset-
+// derived value, it does not fall back to some other customColors field.
+// This intentionally does NOT contrast-check anything itself (see
+// getManualColorContrastWarning() in lib/contrast.ts for the UI-facing
+// warning) — manual color picking is a deliberate user choice the task
+// spec says to warn about, not block.
+export function applyCustomColors(
+  colors: { bg: string; fg: string; accent: string },
+  customColors: SlideCustomColors | undefined
+): ResolvedSlideColors {
+  return {
+    bg: customColors?.backgroundColor ?? colors.bg,
+    fg: customColors?.fontColor ?? colors.fg,
+    accent: customColors?.shapeColor ?? colors.accent,
+    icon: customColors?.iconColor ?? colors.accent,
   }
 }
 

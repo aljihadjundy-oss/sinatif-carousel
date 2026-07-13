@@ -73,3 +73,41 @@ export function getTextColorFromImage(imageUrl: string | null): '#000000' | '#FF
   void imageUrl
   return '#FFFFFF'
 }
+
+// WCAG AA minimum for normal-size text.
+// https://www.w3.org/TR/WCAG21/#contrast-minimum
+const MIN_TEXT_CONTRAST_RATIO = 4.5
+// Not a WCAG number — a much looser "is this shape/icon basically
+// invisible against its background" heuristic per the task spec
+// ("lighter warning if near-identical to background, no hard
+// requirement"). 1.5 catches near-identical colors without flagging
+// every merely-low-contrast-but-still-visible combination the way the
+// 4.5 text threshold would.
+const MIN_SHAPE_CONTRAST_RATIO = 1.5
+
+// Manual color picking (customColors, see lib/slideDesign.ts) can
+// reintroduce the invisible-text bug class PR #47 fixed for
+// automatically-derived colors — this doesn't block the user's choice
+// (it's deliberate manual override, not a preset the app picked), it
+// just flags it so the UI can show a warning next to the swatch. Returns
+// null when contrast is fine, otherwise a ready-to-display message.
+export function getManualColorContrastWarning(
+  role: 'font' | 'background',
+  hexColor: string,
+  againstHexColor: string
+): string | null {
+  const ratio = getContrastRatio(hexColor, againstHexColor)
+  if (ratio >= MIN_TEXT_CONTRAST_RATIO) return null
+  return role === 'font'
+    ? 'Kontras rendah, teks mungkin sulit dibaca'
+    : 'Kontras rendah, teks di atas warna ini mungkin sulit dibaca'
+}
+
+// Same idea as getManualColorContrastWarning but for shapeColor/iconColor
+// — a much looser check since these are decorative, not something a
+// reader needs to parse the way body text is (see MIN_SHAPE_CONTRAST_RATIO).
+export function getManualShapeContrastWarning(hexColor: string, againstHexColor: string): string | null {
+  const ratio = getContrastRatio(hexColor, againstHexColor)
+  if (ratio >= MIN_SHAPE_CONTRAST_RATIO) return null
+  return 'Warna hampir sama dengan background, elemen ini mungkin tidak terlihat'
+}

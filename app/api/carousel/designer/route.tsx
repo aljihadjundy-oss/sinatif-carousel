@@ -17,7 +17,13 @@ import {
   pickColors,
   renderSlide,
 } from '@/lib/slide-renderer'
-import { DesignOptions, SlideOverride, reindexSlideOverrides, resolveSlideDesign } from '@/lib/slideDesign'
+import {
+  DesignOptions,
+  SlideOverride,
+  applyCustomColors,
+  reindexSlideOverrides,
+  resolveSlideDesign,
+} from '@/lib/slideDesign'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -146,6 +152,16 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  const HEX_COLOR_RE = /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/
+  function isValidCustomColors(c: unknown): boolean {
+    if (c === undefined) return true
+    if (!c || typeof c !== 'object') return false
+    const fields = ['fontColor', 'backgroundColor', 'shapeColor', 'iconColor'] as const
+    return fields.every((f) => {
+      const v = (c as Record<string, unknown>)[f]
+      return v === undefined || (typeof v === 'string' && HEX_COLOR_RE.test(v))
+    })
+  }
   if (body.slide_overrides !== undefined) {
     const isValid =
       Array.isArray(body.slide_overrides) &&
@@ -157,7 +173,8 @@ export async function POST(request: Request) {
           (o.colorScheme === undefined || typeof o.colorScheme === 'string') &&
           (o.textDensity === undefined || TEXT_DENSITIES.includes(o.textDensity)) &&
           (o.backgroundImageUrl === undefined || typeof o.backgroundImageUrl === 'string') &&
-          (o.layoutTemplate === undefined || LAYOUT_VARIANTS.includes(o.layoutTemplate))
+          (o.layoutTemplate === undefined || LAYOUT_VARIANTS.includes(o.layoutTemplate)) &&
+          isValidCustomColors(o.customColors)
       )
     if (!isValid) {
       return NextResponse.json(
@@ -165,7 +182,8 @@ export async function POST(request: Request) {
           error:
             'slide_overrides must be an array of {slideIndex: number, colorScheme?: string, textDensity?: ' +
             `${TEXT_DENSITIES.join('|')}, backgroundImageUrl?: string, layoutTemplate?: ` +
-            `${LAYOUT_VARIANTS.join('|')}}`,
+            `${LAYOUT_VARIANTS.join('|')}, customColors?: {fontColor?, backgroundColor?, shapeColor?, ` +
+            'iconColor?: hex color string}}',
         },
         { status: 400 }
       )
@@ -456,8 +474,14 @@ export async function POST(request: Request) {
       // rewritten script (matched by index) — a color/image override
       // alone reuses this slide's already-resolved body as-is.
       const slideDesign = resolveSlideDesign(defaultDesign, slideOverrides, slide.index)
-      const slideColors =
+      const presetColors =
         slideDesign.colorScheme === colorScheme ? colors : pickColors(visualStyle, slideDesign.colorScheme)
+      // customColors has no post-level default to merge through
+      // resolveSlideDesign() (see lib/slideDesign.ts) — applied here as a
+      // final per-element overlay on top of whatever the colorScheme
+      // already resolved to.
+      const rawOverride = slideOverrides.find((o) => o.slideIndex === slide.index)
+      const slideColors = applyCustomColors(presetColors, rawOverride?.customColors)
       let slideToRender = slide
       if (slideDesign.textDensity !== textDensity) {
         const densitySlides = await getSlidesForDensity(slideDesign.textDensity)
@@ -489,7 +513,8 @@ export async function POST(request: Request) {
         // contrast with no extra code, same as a per-slide colorScheme
         // override already does via pickColors() above.
         slideDesign.backgroundImageUrl,
-        iconChoice
+        iconChoice,
+        rawOverride?.customColors?.iconColor ?? null
       )
       const path = `${postId}/slide-${slide.index}.png`
 

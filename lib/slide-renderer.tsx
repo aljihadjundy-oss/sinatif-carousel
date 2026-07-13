@@ -501,7 +501,14 @@ export async function renderSlide(
   textDensity: TextDensity,
   hierarchy: Hierarchy,
   backgroundImageUrl: string | null,
-  iconChoice: IconName | 'none' | null
+  iconChoice: IconName | 'none' | null,
+  // Only applies to the minimal/accent layouts' standalone topical icon
+  // (the one site below using it) — every other LucideIcon in this file
+  // sits inside a colored badge/block and stays locked to that
+  // container's own getTextColorForBackground() result regardless of
+  // this param. See ResolvedSlideColors.icon in lib/slideDesign.ts for
+  // why that split is deliberate, not an oversight.
+  iconColor: string | null = null
 ) {
   const hasBackgroundImage = !!backgroundImageUrl
   // Text/icon color for anything rendered directly on a colors.accent
@@ -1878,7 +1885,7 @@ export async function renderSlide(
       <div style={{ display: 'flex', flexDirection: 'column', gap: isAccent ? 32 : 24 }}>
         {isAccent && icon && (
           <div style={{ display: 'flex' }}>
-            <LucideIcon name={icon} size={48} color={colors.accent} strokeWidth={2} />
+            <LucideIcon name={icon} size={48} color={iconColor ?? colors.accent} strokeWidth={2} />
           </div>
         )}
         {isAccent && (
