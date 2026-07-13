@@ -156,14 +156,16 @@ export async function POST(request: Request) {
           typeof o.slideIndex === 'number' &&
           (o.colorScheme === undefined || typeof o.colorScheme === 'string') &&
           (o.textDensity === undefined || TEXT_DENSITIES.includes(o.textDensity)) &&
-          (o.backgroundImageUrl === undefined || typeof o.backgroundImageUrl === 'string')
+          (o.backgroundImageUrl === undefined || typeof o.backgroundImageUrl === 'string') &&
+          (o.layoutTemplate === undefined || LAYOUT_VARIANTS.includes(o.layoutTemplate))
       )
     if (!isValid) {
       return NextResponse.json(
         {
           error:
             'slide_overrides must be an array of {slideIndex: number, colorScheme?: string, textDensity?: ' +
-            `${TEXT_DENSITIES.join('|')}, backgroundImageUrl?: string}`,
+            `${TEXT_DENSITIES.join('|')}, backgroundImageUrl?: string, layoutTemplate?: ` +
+            `${LAYOUT_VARIANTS.join('|')}}`,
         },
         { status: 400 }
       )
@@ -437,11 +439,6 @@ export async function POST(request: Request) {
     colorScheme,
     textDensity,
     backgroundImageUrl,
-    // layoutTemplate isn't wired into the render loop yet (still always
-    // layoutVariant below) — resolveSlideDesign() needs the field present
-    // on DesignOptions regardless since it's a single merge function, but
-    // no override.layoutTemplate can be set from the UI yet (that's a
-    // separate change) and slideDesign.layoutTemplate isn't read below.
     layoutTemplate: layoutVariant,
   }
   // Tracks whichever headline/body actually got rendered into each
@@ -474,7 +471,13 @@ export async function POST(request: Request) {
         slideColors,
         fontConfig,
         fonts,
-        layoutVariant,
+        // A per-slide layout override that requires a photo
+        // (photo_editorial/news_card) with no image resolved for this
+        // slide needs no special-case here — renderSlide already falls
+        // back to a fixed dark gradient for those two variants when
+        // backgroundImageUrl is null, the same fallback the post-level
+        // choice already relies on.
+        slideDesign.layoutTemplate,
         logoUrl,
         brandName,
         slideDesign.textDensity,
