@@ -33,7 +33,10 @@ export type LayoutVariant =
 // the designer route), so they stay selectable rather than gated out of
 // the grid — the hint below just tells the user the layout looks best
 // with one, without blocking the choice.
-const LAYOUT_OPTIONS: {
+// Exported so SlideCustomizeControl's per-slide Layout selector (see
+// NEW SCOPE 2 per-slide layout override) reuses the same name/flag
+// metadata instead of a second hand-maintained copy drifting out of sync.
+export const LAYOUT_OPTIONS: {
   key: LayoutVariant
   name: string
   imageOnly?: boolean

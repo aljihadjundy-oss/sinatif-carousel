@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { SlideOverride } from '@/lib/slideDesign'
-import { TextDensity } from './DesignOptionsPanel'
+import { LAYOUT_OPTIONS, LayoutVariant, TextDensity } from './DesignOptionsPanel'
 
 const TEXT_DENSITY_OPTIONS: { value: TextDensity; label: string }[] = [
   { value: 'concise', label: 'Concise' },
@@ -18,7 +18,7 @@ const DEFAULT_OPTION_VALUE = ''
 // reset button disappear correctly, and keeps slide_overrides from
 // silently accumulating empty entries over time.
 function isEmptyOverride(o: SlideOverride): boolean {
-  return !o.colorScheme && !o.textDensity && !o.backgroundImageUrl
+  return !o.colorScheme && !o.textDensity && !o.backgroundImageUrl && !o.layoutTemplate
 }
 
 interface Props {
@@ -104,12 +104,28 @@ export default function SlideCustomizeControl({
     commit(next)
   }
 
+  function handleLayoutChange(value: string) {
+    const next: SlideOverride = { ...override, slideIndex }
+    if (value === DEFAULT_OPTION_VALUE) {
+      delete next.layoutTemplate
+    } else {
+      next.layoutTemplate = value as LayoutVariant
+    }
+    commit(next)
+  }
+
   function handleReset() {
     onChange(undefined)
     setExpanded(false)
   }
 
   const effectiveImageUrl = override?.backgroundImageUrl ?? defaultBackgroundImageUrl
+  const selectedLayoutOption = LAYOUT_OPTIONS.find((opt) => opt.key === override?.layoutTemplate)
+  // Non-blocking hint — image-required templates (news_card,
+  // photo_editorial) still render via the fixed dark-gradient fallback
+  // already built into renderSlide() when there's no image, this is just
+  // a nudge toward the better-looking path, not a validation error.
+  const showImageHint = !!selectedLayoutOption?.recommendsImage && !effectiveImageUrl
 
   return (
     <div className="mt-1.5 text-xs">
@@ -188,6 +204,30 @@ export default function SlideCustomizeControl({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">
+              Layout
+            </label>
+            <select
+              value={override?.layoutTemplate ?? DEFAULT_OPTION_VALUE}
+              onChange={(e) => handleLayoutChange(e.target.value)}
+              disabled={disabled}
+              className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
+            >
+              <option value={DEFAULT_OPTION_VALUE}>Sama seperti default</option>
+              {LAYOUT_OPTIONS.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            {showImageHint && (
+              <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                Tambahkan gambar untuk hasil optimal
+              </p>
+            )}
           </div>
 
           <div>
