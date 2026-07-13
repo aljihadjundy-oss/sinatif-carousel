@@ -1,11 +1,10 @@
-import { TextDensity } from '@/lib/slide-renderer'
+import { LayoutVariant, TextDensity } from '@/lib/slide-renderer'
 
-// Per-slide overrides for color scheme and text density. Layout template
-// and background mode are intentionally NOT overridable per slide — both
-// are structural (which JSX branch renderSlide takes, whether a photo is
-// fetched at all) rather than a per-slide styling knob, so they stay
-// post-level only. Keeping that split explicit here rather than letting
-// a future SlideOverride field creep in casually.
+// Per-slide overrides. Originally (PR #52) this comment said layout
+// template and background mode were intentionally excluded — that was a
+// deliberate scope boundary for the first version of this feature, not a
+// structural limitation; both are now overridable per slide too
+// (backgroundImageUrl, layoutTemplate below), superseding that boundary.
 export interface SlideOverride {
   slideIndex: number
   colorScheme?: string
@@ -16,17 +15,27 @@ export interface SlideOverride {
   // matching that instead of introducing a second, inconsistent name for
   // the same tier.
   textDensity?: TextDensity
+  // Per-slide background image — applies to any layout that reads
+  // backgroundImageUrl (accent/minimal's image-bg treatment,
+  // editorial_gradient, news_card, photo_editorial). Falls back to the
+  // post-level background_image_url, same as every other override field.
+  backgroundImageUrl?: string
+  // Per-slide layout template. One of LAYOUT_VARIANTS (see
+  // lib/slide-renderer.tsx) — validated against that list wherever this
+  // is read from untrusted input (the designer route), not re-declared
+  // as its own union here to avoid the two drifting apart.
+  layoutTemplate?: LayoutVariant
 }
 
 export interface DesignOptions {
   colorScheme: string | null
   textDensity: TextDensity
+  backgroundImageUrl: string | null
+  layoutTemplate: LayoutVariant
 }
 
 // Merges a post's default design with whichever override (if any) applies
-// to a given slide index. Only colorScheme/textDensity are ever
-// overridden — an override object with other shapes can't express
-// anything else since SlideOverride itself has no other fields.
+// to a given slide index.
 export function resolveSlideDesign(
   defaultDesign: DesignOptions,
   overrides: SlideOverride[],
@@ -38,6 +47,8 @@ export function resolveSlideDesign(
     ...defaultDesign,
     colorScheme: override.colorScheme ?? defaultDesign.colorScheme,
     textDensity: override.textDensity ?? defaultDesign.textDensity,
+    backgroundImageUrl: override.backgroundImageUrl ?? defaultDesign.backgroundImageUrl,
+    layoutTemplate: override.layoutTemplate ?? defaultDesign.layoutTemplate,
   }
 }
 

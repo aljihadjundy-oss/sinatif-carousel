@@ -27,12 +27,26 @@ export async function POST(request: Request) {
 
   const postId = formData.get('post_id')
   const file = formData.get('file')
+  // Optional — set by SlideCustomizeControl's per-slide "Replace Image"
+  // control. Omitted (post-level upload) keeps the original fixed
+  // "background.jpg" path/behavior exactly as before; a slide index gets
+  // its own path so uploading a per-slide override image can't overwrite
+  // the post-level default or another slide's override that happen to
+  // share this same route.
+  const slideIndexRaw = formData.get('slide_index')
 
   if (typeof postId !== 'string' || !postId) {
     return NextResponse.json({ error: 'post_id is required' }, { status: 400 })
   }
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file is required' }, { status: 400 })
+  }
+  let slideIndex: number | null = null
+  if (slideIndexRaw !== null) {
+    if (typeof slideIndexRaw !== 'string' || !Number.isInteger(Number(slideIndexRaw))) {
+      return NextResponse.json({ error: 'slide_index must be an integer' }, { status: 400 })
+    }
+    slideIndex = Number(slideIndexRaw)
   }
 
   const { data: post, error: postErr } = await supabase
@@ -58,7 +72,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to process image' }, { status: 400 })
   }
 
-  const path = `${postId}/background.jpg`
+  const path = slideIndex !== null ? `${postId}/background-slide-${slideIndex}.jpg` : `${postId}/background.jpg`
   const contentType = 'image/jpeg'
 
   const { error: uploadErr } = await supabase.storage
