@@ -155,14 +155,15 @@ export async function POST(request: Request) {
           typeof o === 'object' &&
           typeof o.slideIndex === 'number' &&
           (o.colorScheme === undefined || typeof o.colorScheme === 'string') &&
-          (o.textDensity === undefined || TEXT_DENSITIES.includes(o.textDensity))
+          (o.textDensity === undefined || TEXT_DENSITIES.includes(o.textDensity)) &&
+          (o.backgroundImageUrl === undefined || typeof o.backgroundImageUrl === 'string')
       )
     if (!isValid) {
       return NextResponse.json(
         {
           error:
             'slide_overrides must be an array of {slideIndex: number, colorScheme?: string, textDensity?: ' +
-            `${TEXT_DENSITIES.join('|')}}`,
+            `${TEXT_DENSITIES.join('|')}, backgroundImageUrl?: string}`,
         },
         { status: 400 }
       )
@@ -432,7 +433,17 @@ export async function POST(request: Request) {
   // time the URL is (re)rendered client-side.
   const cacheBustVersion = Date.now()
 
-  const defaultDesign: DesignOptions = { colorScheme, textDensity }
+  const defaultDesign: DesignOptions = {
+    colorScheme,
+    textDensity,
+    backgroundImageUrl,
+    // layoutTemplate isn't wired into the render loop yet (still always
+    // layoutVariant below) — resolveSlideDesign() needs the field present
+    // on DesignOptions regardless since it's a single merge function, but
+    // no override.layoutTemplate can be set from the UI yet (that's a
+    // separate change) and slideDesign.layoutTemplate isn't read below.
+    layoutTemplate: layoutVariant,
+  }
   // Tracks whichever headline/body actually got rendered into each
   // slide's image (which can differ from the post-default `slides` array
   // when a per-slide density override pulled a different rewritten
@@ -443,13 +454,10 @@ export async function POST(request: Request) {
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of slides) {
-      // Layout template (and background mode) are always the post-level
-      // default, never overridden per slide — resolveSlideDesign() only
-      // ever touches colorScheme/textDensity, by construction (see
-      // lib/slideDesign.ts). If the resolved density differs from the
-      // slide's own script variant, that slide's body needs to come from
-      // the OTHER density's rewritten script (matched by index) — a color
-      // override alone reuses this slide's already-resolved body as-is.
+      // If the resolved density differs from the slide's own script
+      // variant, that slide's body needs to come from the OTHER density's
+      // rewritten script (matched by index) — a color/image override
+      // alone reuses this slide's already-resolved body as-is.
       const slideDesign = resolveSlideDesign(defaultDesign, slideOverrides, slide.index)
       const slideColors =
         slideDesign.colorScheme === colorScheme ? colors : pickColors(visualStyle, slideDesign.colorScheme)
@@ -471,7 +479,13 @@ export async function POST(request: Request) {
         brandName,
         slideDesign.textDensity,
         hierarchy,
-        backgroundImageUrl,
+        // Text color for this slide re-derives from whichever image URL
+        // is actually passed here — renderSlide computes
+        // getTextColorFromImage(backgroundImageUrl) internally per call,
+        // so a per-slide image override automatically gets correct
+        // contrast with no extra code, same as a per-slide colorScheme
+        // override already does via pickColors() above.
+        slideDesign.backgroundImageUrl,
         iconChoice
       )
       const path = `${postId}/slide-${slide.index}.png`

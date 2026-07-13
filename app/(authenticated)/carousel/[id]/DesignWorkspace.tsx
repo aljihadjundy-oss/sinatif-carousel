@@ -89,6 +89,8 @@ export default function DesignWorkspace({
                   slideIndex={s.index}
                   override={override}
                   brandColors={brandColors}
+                  postId={postId}
+                  defaultBackgroundImageUrl={initialBackgroundImageUrl}
                   onChange={(next) => handleSlideOverrideChange(s.index, next)}
                 />
               </div>
