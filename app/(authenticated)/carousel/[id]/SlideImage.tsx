@@ -7,9 +7,10 @@ interface Props {
   topic: string
   index: number
   url: string
+  isCustomized?: boolean
 }
 
-export default function SlideImage({ topic, index, url }: Props) {
+export default function SlideImage({ topic, index, url, isCustomized = false }: Props) {
   const [downloading, setDownloading] = useState(false)
 
   async function handleDownload() {
@@ -43,6 +44,11 @@ export default function SlideImage({ topic, index, url }: Props) {
         alt={`Slide ${index}`}
         className="rounded-lg border border-gray-200 dark:border-gray-800 w-full"
       />
+      {isCustomized && (
+        <span className="absolute top-2 left-2 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white shadow">
+          Custom
+        </span>
+      )}
       <button
         onClick={handleDownload}
         disabled={downloading}

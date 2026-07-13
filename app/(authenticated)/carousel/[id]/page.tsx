@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import RegenerateDesignButton from './RegenerateDesignButton'
+import DesignWorkspace from './DesignWorkspace'
 import { LayoutVariant } from './DesignOptionsPanel'
 import { IconName } from '@/lib/icons'
 import DownloadAllButton from './DownloadAllButton'
-import SlideImage from './SlideImage'
 import EditableScript from './EditableScript'
+import { SlideOverride } from '@/lib/slideDesign'
 
 interface Slide {
   index: number
@@ -36,7 +36,7 @@ export default async function CarouselPostPage({
     .schema('carousel')
     .from('posts')
     .select(
-      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, brand_profiles(name, visual_style)'
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides, brand_profiles(name, visual_style)'
     )
     .eq('id', id)
     .single()
@@ -103,9 +103,9 @@ export default async function CarouselPostPage({
           )}
         </div>
 
-        <RegenerateDesignButton
+        <DesignWorkspace
           postId={post.id}
-          buttonStyle={hasDesign ? 'secondary' : 'primary'}
+          hasDesign={hasDesign}
           initialLayoutVariant={
             (post.layout_variant as LayoutVariant | null) ?? 'minimal'
           }
@@ -121,30 +121,14 @@ export default async function CarouselPostPage({
             (post.icon_name as IconName | 'none' | null) ?? 'auto'
           }
           initialTypographyPreset={post.typography_preset}
+          initialSlideOverrides={(post.slide_overrides as SlideOverride[] | null) ?? []}
           brandColors={brand?.visual_style?.colors ?? null}
           topic={post.topic}
           brandName={brand?.name ?? null}
+          renderedSlides={slides
+            .filter((s) => s.rendered_image_url)
+            .map((s) => ({ index: s.slide_order, url: s.rendered_image_url! }))}
         />
-
-        {hasDesign ? (
-          <div className="grid grid-cols-2 gap-3">
-            {slides
-              .filter((s) => s.rendered_image_url)
-              .map((s) => (
-                <SlideImage
-                  key={s.slide_order}
-                  topic={script?.title ?? post.topic}
-                  index={s.slide_order}
-                  url={s.rendered_image_url!}
-                />
-              ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No design generated yet — this can happen if the automatic
-            design step failed. Use the button above to try again.
-          </p>
-        )}
       </div>
 
       {scriptStage?.id ? (
