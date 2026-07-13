@@ -1,8 +1,19 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { SlideOverride } from '@/lib/slideDesign'
+import { SlideOverride, SlideCustomColors } from '@/lib/slideDesign'
+import { getManualColorContrastWarning, getManualShapeContrastWarning } from '@/lib/contrast'
 import { LAYOUT_OPTIONS, LayoutVariant, TextDensity } from './DesignOptionsPanel'
+
+// No color-picker dependency in package.json (checked before writing
+// this) — native <input type="color"> swatches instead of pulling in
+// e.g. react-colorful for what's otherwise a plain hex-value field.
+const COLOR_SWATCHES: { field: keyof SlideCustomColors; label: string }[] = [
+  { field: 'fontColor', label: 'Font' },
+  { field: 'backgroundColor', label: 'Background' },
+  { field: 'shapeColor', label: 'Shape' },
+  { field: 'iconColor', label: 'Ikon' },
+]
 
 const TEXT_DENSITY_OPTIONS: { value: TextDensity; label: string }[] = [
   { value: 'concise', label: 'Concise' },
@@ -18,7 +29,13 @@ const DEFAULT_OPTION_VALUE = ''
 // reset button disappear correctly, and keeps slide_overrides from
 // silently accumulating empty entries over time.
 function isEmptyOverride(o: SlideOverride): boolean {
-  return !o.colorScheme && !o.textDensity && !o.backgroundImageUrl && !o.layoutTemplate
+  return (
+    !o.colorScheme &&
+    !o.textDensity &&
+    !o.backgroundImageUrl &&
+    !o.layoutTemplate &&
+    !(o.customColors && Object.keys(o.customColors).length > 0)
+  )
 }
 
 interface Props {
@@ -119,6 +136,27 @@ export default function SlideCustomizeControl({
     setExpanded(false)
   }
 
+  function handleCustomColorChange(field: keyof SlideCustomColors, value: string) {
+    const next: SlideOverride = { ...override, slideIndex, customColors: { ...override?.customColors } }
+    next.customColors![field] = value
+    commit(next)
+  }
+
+  function handleResetSwatch(field: keyof SlideCustomColors) {
+    if (!override?.customColors) return
+    const nextCustomColors = { ...override.customColors }
+    delete nextCustomColors[field]
+    const next: SlideOverride = { ...override, slideIndex, customColors: nextCustomColors }
+    if (Object.keys(nextCustomColors).length === 0) delete next.customColors
+    commit(next)
+  }
+
+  function handleResetAllColors() {
+    const next: SlideOverride = { ...override, slideIndex }
+    delete next.customColors
+    commit(next)
+  }
+
   const effectiveImageUrl = override?.backgroundImageUrl ?? defaultBackgroundImageUrl
   const selectedLayoutOption = LAYOUT_OPTIONS.find((opt) => opt.key === override?.layoutTemplate)
   // Non-blocking hint — image-required templates (news_card,
@@ -126,6 +164,40 @@ export default function SlideCustomizeControl({
   // already built into renderSlide() when there's no image, this is just
   // a nudge toward the better-looking path, not a validation error.
   const showImageHint = !!selectedLayoutOption?.recommendsImage && !effectiveImageUrl
+
+  // Contrast warnings only fire when both sides of the comparison are
+  // explicit hex values the user actually picked in this control — with
+  // no custom backgroundColor set, the real effective background is
+  // whatever the resolved colorScheme's preset produced server-side
+  // (pickColors()), which this client component has no reliable hex
+  // value for (brandColors only has the resolved-per-post default, not
+  // necessarily this slide's actual resolved color if a colorScheme
+  // override is also active). Warning against a guessed background would
+  // risk a wrong/misleading message; skipping is honest about what this
+  // control can actually verify. Task spec: warn, don't block.
+  const customColors = override?.customColors
+  const fontWarning =
+    customColors?.fontColor && customColors?.backgroundColor
+      ? getManualColorContrastWarning('font', customColors.fontColor, customColors.backgroundColor)
+      : null
+  const backgroundWarning =
+    customColors?.backgroundColor && customColors?.fontColor
+      ? getManualColorContrastWarning('background', customColors.backgroundColor, customColors.fontColor)
+      : null
+  const shapeWarning =
+    customColors?.shapeColor && customColors?.backgroundColor
+      ? getManualShapeContrastWarning(customColors.shapeColor, customColors.backgroundColor)
+      : null
+  const iconWarning =
+    customColors?.iconColor && customColors?.backgroundColor
+      ? getManualShapeContrastWarning(customColors.iconColor, customColors.backgroundColor)
+      : null
+  const swatchWarnings: Record<keyof SlideCustomColors, string | null> = {
+    fontColor: fontWarning,
+    backgroundColor: backgroundWarning,
+    shapeColor: shapeWarning,
+    iconColor: iconWarning,
+  }
 
   return (
     <div className="mt-1.5 text-xs">
@@ -274,6 +346,56 @@ export default function SlideCustomizeControl({
               )}
             </div>
             {uploadError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{uploadError}</p>}
+          </div>
+
+          <div>
+            <div className="mb-0.5 flex items-center justify-between">
+              <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                Custom Colors
+              </label>
+              {customColors && Object.keys(customColors).length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetAllColors}
+                  disabled={disabled}
+                  className="text-[11px] text-blue-600 hover:underline dark:text-blue-400 disabled:opacity-50"
+                >
+                  Reset all colors
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {COLOR_SWATCHES.map(({ field, label }) => {
+                const value = customColors?.[field]
+                const warning = swatchWarnings[field]
+                return (
+                  <div key={field}>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={value ?? '#ffffff'}
+                        onChange={(e) => handleCustomColorChange(field, e.target.value)}
+                        disabled={disabled}
+                        className="h-6 w-8 shrink-0 cursor-pointer rounded border border-gray-300 disabled:opacity-50 dark:border-gray-700"
+                      />
+                      <span className="text-[11px] text-gray-600 dark:text-gray-400">{label}</span>
+                      {value && (
+                        <button
+                          type="button"
+                          onClick={() => handleResetSwatch(field)}
+                          disabled={disabled}
+                          title="Reset to default"
+                          className="ml-auto text-[11px] text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:hover:text-gray-200"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {warning && <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">{warning}</p>}
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {hasOverride && (
