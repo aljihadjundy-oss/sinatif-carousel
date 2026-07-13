@@ -213,6 +213,7 @@ export type LayoutVariant =
   | 'terminal_dev'
   | 'elegant_promo'
   | 'news_card'
+  | 'photo_editorial'
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'minimal',
   'accent',
@@ -222,6 +223,7 @@ export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'terminal_dev',
   'elegant_promo',
   'news_card',
+  'photo_editorial',
 ]
 
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -596,6 +598,13 @@ export async function renderSlide(
   // Headline/sub-headline sit inside a solid colors.accent box — contrast-
   // computed rather than assumed white, the exact bug class PR #47 fixed.
   const newsCardBoxTextColor = getTextColorForBackground(colors.accent)
+
+  // photo_editorial also requires a photo per its design, same fallback
+  // reasoning/value as news_card above. Text sits directly on the photo
+  // under a dark scrim (not inside a solid box), so its color comes from
+  // getTextColorFromImage() (imageTextColor, already computed above) —
+  // same treatment editorial_gradient already uses for the same reason.
+  const isPhotoEditorial = variant === 'photo_editorial'
 
   const content = isFlatMockupCard ? (
     <div
@@ -1029,7 +1038,7 @@ export async function renderSlide(
         </div>
       </div>
     </div>
-  ) : hasBackgroundImage && !isTerminalDev && !isElegantPromo && !isNewsCard ? (
+  ) : hasBackgroundImage && !isTerminalDev && !isElegantPromo && !isNewsCard && !isPhotoEditorial ? (
     <div
       style={{
         position: 'relative',
@@ -1683,6 +1692,136 @@ export async function renderSlide(
             }}
           >
             {slide.index} / {total}
+          </div>
+        </div>
+      )
+    })()
+  ) : isPhotoEditorial ? (
+    (() => {
+      // Alternates the text block's corner every other slide so a swiped
+      // carousel doesn't read as monotonous — odd slide numbers top-left,
+      // even top-right, per the design spec.
+      const alignRight = slide.index % 2 === 0
+      const side = alignRight ? 'right' : 'left'
+
+      return (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            backgroundColor: NEWS_CARD_FALLBACK_BG,
+            fontFamily: fontConfig.bodyFamily,
+            overflow: 'hidden',
+          }}
+        >
+          {hasBackgroundImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={backgroundImageUrl!}
+              alt=""
+              width={1080}
+              height={1350}
+              style={{ position: 'absolute', top: 0, left: 0, width: 1080, height: 1350, objectFit: 'cover' }}
+            />
+          ) : (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1080,
+                height: 1350,
+                display: 'flex',
+                background: `linear-gradient(160deg, ${NEWS_CARD_FALLBACK_BG}, #1f2937)`,
+              }}
+            />
+          )}
+
+          {/* Scrim covers only the top ~43% where the text block sits —
+              the photo stays fully visible below it, unlike
+              editorial_gradient's full-height gradient. */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: 1080,
+              height: 580,
+              display: 'flex',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.45) 65%, rgba(0,0,0,0) 100%)',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              top: 64,
+              [side]: 64,
+              width: 640,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: alignRight ? 'flex-end' : 'flex-start',
+            }}
+          >
+            {/* Oversized slide number — thin/light weight (satori doesn't
+                have a 200/300 weight file bundled for any font here, so
+                "thin" is approximated with low opacity + very large size
+                rather than an actual lighter font weight) sitting directly
+                above the heading, low enough opacity to read as a design
+                motif rather than competing with the real content. */}
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: fontConfig.headlineFamily,
+                fontWeight: 400,
+                fontSize: 220,
+                lineHeight: 1,
+                opacity: 0.4,
+                color: imageTextColor,
+                marginBottom: -36,
+              }}
+            >
+              {slide.index}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: fontConfig.headlineFamily,
+                fontWeight: fontConfig.headlineWeight,
+                fontSize: HEADLINE_FONT_SIZE[hierarchy],
+                lineHeight: 1.1,
+                color: imageTextColor,
+                textAlign: alignRight ? 'right' : 'left',
+              }}
+            >
+              {slide.headline}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: alignRight ? 'row-reverse' : 'row',
+                gap: 16,
+                marginTop: 20,
+              }}
+            >
+              <div style={{ display: 'flex', flexShrink: 0, width: 4, backgroundColor: colors.accent }} />
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: fontConfig.bodyFamily,
+                  fontWeight: fontConfig.bodyWeight,
+                  fontSize: bodyFontSize(textDensity, hierarchy) * 0.75,
+                  lineHeight: 1.4,
+                  color: imageTextColor,
+                  opacity: 0.9,
+                  textAlign: alignRight ? 'right' : 'left',
+                }}
+              >
+                {body}
+              </div>
+            </div>
           </div>
         </div>
       )

@@ -12,6 +12,7 @@ export type LayoutVariant =
   | 'terminal_dev'
   | 'elegant_promo'
   | 'news_card'
+  | 'photo_editorial'
 
 // Thumbnails are static PNGs committed under public/layout-previews/,
 // generated once by scripts/generate-layout-previews.ts — never rendered
@@ -27,11 +28,11 @@ export type LayoutVariant =
 // bug in how the background URL is resolved/sent. The warning below the
 // Background section is the fix: surface this up front instead of
 // letting it look like a broken photo. recommendsImage is the opposite
-// case from imageOnly: news_card (and photo_editorial once added) render
-// meaningfully either way (they fall back to a fixed dark solid without
-// a photo, per the designer route), so they stay selectable rather than
-// gated out of the grid — the hint below just tells the user the layout
-// looks best with one, without blocking the choice.
+// case from imageOnly: news_card/photo_editorial render meaningfully
+// either way (they fall back to a fixed dark solid without a photo, per
+// the designer route), so they stay selectable rather than gated out of
+// the grid — the hint below just tells the user the layout looks best
+// with one, without blocking the choice.
 const LAYOUT_OPTIONS: {
   key: LayoutVariant
   name: string
@@ -47,6 +48,7 @@ const LAYOUT_OPTIONS: {
   { key: 'terminal_dev', name: 'Terminal Dev', ignoresBackgroundImage: true },
   { key: 'elegant_promo', name: 'Elegant Promo', ignoresBackgroundImage: true },
   { key: 'news_card', name: 'News Card', recommendsImage: true },
+  { key: 'photo_editorial', name: 'Photo Editorial', recommendsImage: true },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
