@@ -212,6 +212,7 @@ export type LayoutVariant =
   | 'flat_mockup_card'
   | 'terminal_dev'
   | 'elegant_promo'
+  | 'news_card'
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'minimal',
   'accent',
@@ -220,6 +221,7 @@ export const LAYOUT_VARIANTS: LayoutVariant[] = [
   'flat_mockup_card',
   'terminal_dev',
   'elegant_promo',
+  'news_card',
 ]
 
 export type TextDensity = 'concise' | 'standard' | 'detailed'
@@ -530,6 +532,13 @@ export async function renderSlide(
   // brand-color background with a mock terminal window as the visual
   // anchor, not a photo.
   const isTerminalDev = variant === 'terminal_dev'
+  // elegant_promo is likewise a flat/no-photo style, same reasoning as
+  // flat_icon_list/flat_mockup_card/terminal_dev above — it ignores
+  // background_image_url even when one happens to be set on the post, so
+  // it must be excluded from the tighter image-bg text-density limit
+  // below the same way those are (its cream box has as much room as any
+  // other solid-background treatment).
+  const isElegantPromo = variant === 'elegant_promo'
   const isAccent =
     variant === 'accent' || (variant === 'editorial_gradient' && !hasBackgroundImage)
   const icon =
@@ -541,7 +550,7 @@ export async function renderSlide(
   const body = applyTextDensity(
     slide.body,
     textDensity,
-    hasBackgroundImage && !isFlatIconList && !isFlatMockupCard && !isTerminalDev
+    hasBackgroundImage && !isFlatIconList && !isFlatMockupCard && !isTerminalDev && !isElegantPromo
   )
   // Fixed (not brand-derived) dark background for the mock terminal window
   // — a real terminal reads as a terminal specifically because it's dark
@@ -565,7 +574,6 @@ export async function renderSlide(
   // "cream-like", otherwise falls back to a fixed off-white rather than
   // rendering e.g. Hexolution's dark charcoal bg for a template whose
   // whole aesthetic depends on being light.
-  const isElegantPromo = variant === 'elegant_promo'
   const ELEGANT_PROMO_FALLBACK_BG = '#F7F3EE'
   const promoBg = getLuminance(colors.bg) > 0.75 ? colors.bg : ELEGANT_PROMO_FALLBACK_BG
   const promoTextColor = getTextColorForBackground(promoBg)
@@ -576,6 +584,18 @@ export async function renderSlide(
   // to be readable against a fixed surface without checking.
   const promoAccentColor =
     getContrastRatio(colors.accent, promoBg) >= 3 ? colors.accent : promoTextColor
+
+  // news_card requires a photo per its design (garistemu-style publisher
+  // card), but per product requirement falls back to a fixed dark solid
+  // rather than being hidden from the layout picker when no image is set —
+  // same fallback value pickColors already uses as its own "no palette"
+  // default, so it's a value already proven to work as a dark background
+  // elsewhere in this file.
+  const isNewsCard = variant === 'news_card'
+  const NEWS_CARD_FALLBACK_BG = '#111827'
+  // Headline/sub-headline sit inside a solid colors.accent box — contrast-
+  // computed rather than assumed white, the exact bug class PR #47 fixed.
+  const newsCardBoxTextColor = getTextColorForBackground(colors.accent)
 
   const content = isFlatMockupCard ? (
     <div
@@ -1009,7 +1029,7 @@ export async function renderSlide(
         </div>
       </div>
     </div>
-  ) : hasBackgroundImage ? (
+  ) : hasBackgroundImage && !isTerminalDev && !isElegantPromo && !isNewsCard ? (
     <div
       style={{
         position: 'relative',
@@ -1472,6 +1492,197 @@ export async function renderSlide(
             >
               TAP TO JOIN →
             </div>
+          </div>
+        </div>
+      )
+    })()
+  ) : isNewsCard ? (
+    (() => {
+      const logoInitial = (brandName ?? 'C').trim().charAt(0).toUpperCase() || 'C'
+      // No dedicated sub-headline field in the script data — same
+      // situation extractCardHighlight() already solves for
+      // flat_mockup_card/elegant_promo, reused here rather than a 4th
+      // "pull a short line out of body" heuristic.
+      const subHeadline = extractCardHighlight(body, slide.headline)
+
+      return (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            backgroundColor: NEWS_CARD_FALLBACK_BG,
+            fontFamily: fontConfig.bodyFamily,
+            overflow: 'hidden',
+          }}
+        >
+          {hasBackgroundImage ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={backgroundImageUrl}
+                alt=""
+                width={1080}
+                height={1350}
+                style={{ position: 'absolute', top: 0, left: 0, width: 1080, height: 1350, objectFit: 'cover' }}
+              />
+              {/* Slight dark vignette — reuses the same linear-gradient
+                  technique already verified to render correctly in Satori
+                  by editorial_gradient, just lighter at the top/middle so
+                  it reads as a vignette rather than a full scrim. */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: 1080,
+                  height: 1350,
+                  display: 'flex',
+                  background:
+                    'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.05) 35%, rgba(0,0,0,0.7) 100%)',
+                }}
+              />
+            </>
+          ) : (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1080,
+                height: 1350,
+                display: 'flex',
+                background: `linear-gradient(160deg, ${NEWS_CARD_FALLBACK_BG}, #1f2937)`,
+              }}
+            />
+          )}
+
+          {/* Subtle nav arrow, right edge. */}
+          <div style={{ position: 'absolute', top: '48%', right: 32, display: 'flex', opacity: 0.6 }}>
+            <div style={{ display: 'flex', fontSize: 40, color: imageTextColor }}>›</div>
+          </div>
+
+          {/* Main text box — lower third, slightly overlapping the edge.
+              The offset rectangle behind it is a fixed size (rather than
+              matched exactly to the box's dynamic content height) since
+              its whole purpose is a peeking depth effect, not a precise
+              shadow — painted first so the box renders on top of it. */}
+          <div style={{ position: 'absolute', left: 64, right: 64, bottom: 96, display: 'flex' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                width: 952,
+                height: 240,
+                backgroundColor: 'rgba(255,255,255,0.85)',
+                borderRadius: 4,
+                display: 'flex',
+              }}
+            />
+            <div
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: colors.accent,
+                padding: '40px 40px 32px 40px',
+                gap: 16,
+                borderRadius: 4,
+                width: '100%',
+              }}
+            >
+              {/* Small brand logo box, top-left of the text block. */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -26,
+                  left: 24,
+                  display: 'flex',
+                  width: 56,
+                  height: 56,
+                  backgroundColor: colors.bg,
+                  color: getTextColorForBackground(colors.bg),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 24,
+                  fontWeight: 700,
+                  borderRadius: 4,
+                }}
+              >
+                {logoInitial}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  marginTop: 20,
+                  fontFamily: fontConfig.headlineFamily,
+                  fontWeight: fontConfig.headlineWeight,
+                  fontSize: Math.round(HEADLINE_FONT_SIZE[hierarchy] * 0.8),
+                  lineHeight: 1.1,
+                  textTransform: 'uppercase',
+                  color: newsCardBoxTextColor,
+                }}
+              >
+                {slide.headline}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontFamily: fontConfig.bodyFamily,
+                  fontWeight: 500,
+                  fontSize: 26,
+                  lineHeight: 1.35,
+                  color: newsCardBoxTextColor,
+                  opacity: 0.9,
+                }}
+              >
+                {subHeadline}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom-left: brand logo mark. Bottom-right: slide counter. */}
+          <div style={{ position: 'absolute', left: 64, bottom: 40, display: 'flex', alignItems: 'center', gap: 12 }}>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt="" width={36} height={36} style={{ objectFit: 'contain' }} />
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 9999,
+                  backgroundColor: imageTextColor,
+                  color: getTextColorForBackground(imageTextColor),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 16,
+                  fontWeight: 700,
+                }}
+              >
+                {logoInitial}
+              </div>
+            )}
+            <div style={{ display: 'flex', fontSize: 20, fontWeight: 600, color: imageTextColor, opacity: 0.85 }}>
+              {brandName ?? 'CAROUSEL'}
+            </div>
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              right: 64,
+              bottom: 40,
+              display: 'flex',
+              fontSize: 20,
+              fontWeight: 600,
+              color: imageTextColor,
+              opacity: 0.85,
+            }}
+          >
+            {slide.index} / {total}
           </div>
         </div>
       )

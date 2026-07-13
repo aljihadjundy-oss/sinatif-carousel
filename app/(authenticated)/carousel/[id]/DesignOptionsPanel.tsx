@@ -11,6 +11,7 @@ export type LayoutVariant =
   | 'flat_mockup_card'
   | 'terminal_dev'
   | 'elegant_promo'
+  | 'news_card'
 
 // Thumbnails are static PNGs committed under public/layout-previews/,
 // generated once by scripts/generate-layout-previews.ts — never rendered
@@ -25,12 +26,18 @@ export type LayoutVariant =
 // whose brand palette's first color happened to be named "gray"), not a
 // bug in how the background URL is resolved/sent. The warning below the
 // Background section is the fix: surface this up front instead of
-// letting it look like a broken photo.
+// letting it look like a broken photo. recommendsImage is the opposite
+// case from imageOnly: news_card (and photo_editorial once added) render
+// meaningfully either way (they fall back to a fixed dark solid without
+// a photo, per the designer route), so they stay selectable rather than
+// gated out of the grid — the hint below just tells the user the layout
+// looks best with one, without blocking the choice.
 const LAYOUT_OPTIONS: {
   key: LayoutVariant
   name: string
   imageOnly?: boolean
   ignoresBackgroundImage?: boolean
+  recommendsImage?: boolean
 }[] = [
   { key: 'minimal', name: 'Minimal' },
   { key: 'accent', name: 'Accent' },
@@ -39,6 +46,7 @@ const LAYOUT_OPTIONS: {
   { key: 'flat_mockup_card', name: 'Flat Mockup Card', ignoresBackgroundImage: true },
   { key: 'terminal_dev', name: 'Terminal Dev', ignoresBackgroundImage: true },
   { key: 'elegant_promo', name: 'Elegant Promo', ignoresBackgroundImage: true },
+  { key: 'news_card', name: 'News Card', recommendsImage: true },
 ]
 export type TextDensity = 'concise' | 'standard' | 'detailed'
 export type Hierarchy = 'headline_focused' | 'balanced'
@@ -327,6 +335,12 @@ export default function DesignOptionsPanel({
             The selected layout ({LAYOUT_OPTIONS.find((opt) => opt.key === layoutVariant)?.name})
             is a flat, no-photo style — any background image chosen below won&apos;t be used.
             Pick Minimal, Accent, or Editorial (Gradient) to use a photo.
+          </p>
+        )}
+        {LAYOUT_OPTIONS.find((opt) => opt.key === layoutVariant)?.recommendsImage && (
+          <p className="mb-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 dark:text-blue-400 dark:bg-blue-500/10 dark:border-blue-500/30">
+            Template ini optimal dengan background image — tanpa gambar, layout akan pakai
+            background gelap polos sebagai gantinya.
           </p>
         )}
         <div className="flex rounded-lg border border-gray-300 p-1 dark:border-gray-700">
