@@ -17,6 +17,7 @@ import {
   pickColors,
   renderSlide,
 } from '@/lib/slide-renderer'
+import { DesignOptions, SlideOverride, resolveSlideDesign } from '@/lib/slideDesign'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
     background_image_url?: string | null
     icon_name?: string | null
     typography_preset?: string | null
+    slide_overrides?: SlideOverride[]
   }
   try {
     body = await request.json()
@@ -135,12 +137,34 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  if (body.slide_overrides !== undefined) {
+    const isValid =
+      Array.isArray(body.slide_overrides) &&
+      body.slide_overrides.every(
+        (o) =>
+          o &&
+          typeof o === 'object' &&
+          typeof o.slideIndex === 'number' &&
+          (o.colorScheme === undefined || typeof o.colorScheme === 'string') &&
+          (o.textDensity === undefined || TEXT_DENSITIES.includes(o.textDensity))
+      )
+    if (!isValid) {
+      return NextResponse.json(
+        {
+          error:
+            'slide_overrides must be an array of {slideIndex: number, colorScheme?: string, textDensity?: ' +
+            `${TEXT_DENSITIES.join('|')}}`,
+        },
+        { status: 400 }
+      )
+    }
+  }
 
   const { data: post, error: postErr } = await supabase
     .schema('carousel')
     .from('posts')
     .select(
-      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset'
+      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides'
     )
     .eq('id', postId)
     .maybeSingle()
@@ -184,6 +208,10 @@ export async function POST(request: Request) {
     body.typography_preset !== undefined
       ? body.typography_preset
       : (post.typography_preset as string | null)
+  const slideOverrides: SlideOverride[] =
+    body.slide_overrides !== undefined
+      ? body.slide_overrides
+      : ((post.slide_overrides as SlideOverride[] | null) ?? [])
 
   const { data: scriptStage, error: scriptErr } = await supabase
     .schema('carousel')
@@ -206,6 +234,11 @@ export async function POST(request: Request) {
       { status: 400 }
     )
   }
+  // TS can't carry the narrowing above across the getSlidesForDensity
+  // closure defined further down — this alias gives it (and everything
+  // else in the route) a definitely-non-undefined array to reference.
+  const originalSlides = originalScript.slides
+  const originalScriptTitle = originalScript.title
 
   let visualStyle: VisualStyle | null = null
   let brandName: string | null = null
@@ -231,63 +264,56 @@ export async function POST(request: Request) {
   // given density pays for one Groq rewrite call, every subsequent
   // regenerate at that density (or switch back to it) reads the cached
   // rewrite instead of re-calling the model.
-  let script: Script = originalScript
-  // Logs unconditionally (not gated behind DEBUG_DESIGNER like the raw
-  // request body log above) — added to trace a report that
-  // rewriteSlidesForDensity() never seems to run in production (zero
-  // script_concise/script_detailed rows in stage_outputs despite posts
-  // with those densities set). Cheap enough to leave in permanently,
-  // same reasoning as the "request from user" log above.
-  console.log(
-    `designer: resolved text_density="${textDensity}" for post ${postId} ` +
-      `(will ${textDensity === 'standard' ? 'reuse the "script" stage as-is' : `check/populate stage "script_${textDensity}"`})`
-  )
-  if (textDensity !== 'standard') {
-    const densityStage = `script_${textDensity}`
-    const { data: cachedStage, error: cachedErr } = await supabase
-      .schema('carousel')
-      .from('stage_outputs')
-      .select('output_json')
-      .eq('post_id', postId)
-      .eq('stage', densityStage)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+  //
+  // Extracted into a per-request-memoized function (rather than the single
+  // inline block this used to be) because per-slide text density overrides
+  // mean more than one density's rewrite can be needed in the same
+  // request — e.g. the post's default is "standard" but one slide is
+  // overridden to "detailed". Memoizing by density avoids re-querying/
+  // re-rewriting the same density twice if multiple slides happen to
+  // share an override.
+  const densityScriptCache = new Map<TextDensity, Promise<Slide[]>>()
+  function getSlidesForDensity(density: TextDensity): Promise<Slide[]> {
+    const cached = densityScriptCache.get(density)
+    if (cached) return cached
 
-    if (cachedErr) {
-      return NextResponse.json({ error: cachedErr.message }, { status: 500 })
-    }
+    const promise = (async (): Promise<Slide[]> => {
+      if (density === 'standard') return originalSlides
 
-    const cached = cachedStage?.output_json as Script | undefined
-    console.log(
-      `designer: cache lookup for stage "${densityStage}" on post ${postId} ` +
-        `${cached?.slides?.length ? `HIT (${cached.slides.length} slides)` : 'MISS — will call rewriteSlidesForDensity()'}`
-    )
-    if (cached?.slides?.length) {
-      script = cached
-    } else {
-      let rewrittenSlides
-      try {
-        console.log(`designer: calling rewriteSlidesForDensity() for post ${postId}, density "${textDensity}"`)
-        rewrittenSlides = await rewriteSlidesForDensity(
-          originalScript.slides,
-          textDensity,
-          brandName ?? 'this brand',
-          toneGuideline,
-          contentStandards
-        )
-        console.log(
-          `designer: rewriteSlidesForDensity() succeeded for post ${postId} — ${rewrittenSlides.length} slides rewritten`
-        )
-      } catch (err) {
-        console.error('designer: rewriteSlidesForDensity error', err)
-        return NextResponse.json(
-          { error: `Failed to rewrite script for "${textDensity}" density` },
-          { status: 502 }
-        )
-      }
+      const densityStage = `script_${density}`
+      console.log(
+        `designer: resolving text_density="${density}" for post ${postId} — checking cached stage "${densityStage}"`
+      )
+      const { data: cachedStage, error: cachedErr } = await supabase
+        .schema('carousel')
+        .from('stage_outputs')
+        .select('output_json')
+        .eq('post_id', postId)
+        .eq('stage', densityStage)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      script = { title: originalScript.title, slides: rewrittenSlides }
+      if (cachedErr) throw new Error(cachedErr.message)
+
+      const cachedScript = cachedStage?.output_json as Script | undefined
+      console.log(
+        `designer: cache lookup for stage "${densityStage}" on post ${postId} ` +
+          `${cachedScript?.slides?.length ? `HIT (${cachedScript.slides.length} slides)` : 'MISS — will call rewriteSlidesForDensity()'}`
+      )
+      if (cachedScript?.slides?.length) return cachedScript.slides
+
+      console.log(`designer: calling rewriteSlidesForDensity() for post ${postId}, density "${density}"`)
+      const rewrittenSlides = await rewriteSlidesForDensity(
+        originalSlides,
+        density,
+        brandName ?? 'this brand',
+        toneGuideline,
+        contentStandards
+      )
+      console.log(
+        `designer: rewriteSlidesForDensity() succeeded for post ${postId} — ${rewrittenSlides.length} slides rewritten`
+      )
 
       const { error: densityStageErr } = await supabase
         .schema('carousel')
@@ -295,7 +321,7 @@ export async function POST(request: Request) {
         .insert({
           post_id: postId,
           stage: densityStage,
-          output_json: script,
+          output_json: { title: originalScriptTitle, slides: rewrittenSlides },
         })
 
       if (densityStageErr) {
@@ -307,15 +333,28 @@ export async function POST(request: Request) {
       } else {
         console.log(`designer: cached rewrite under stage "${densityStage}" for post ${postId}`)
       }
-    }
+
+      return rewrittenSlides
+    })()
+
+    densityScriptCache.set(density, promise)
+    return promise
   }
 
-  // script.slides is optional on the Script type (it mirrors the
-  // loosely-typed stage_outputs.output_json column), but every path above
-  // that assigns `script` already validated a non-empty slides array
-  // before assigning — this alias just gives the rest of the route a
-  // type that reflects that guarantee instead of re-checking it.
-  const slides = script.slides!
+  // The post-level default script (used for slide count/order/headlines,
+  // and for any slide with no per-slide density override) still needs to
+  // be resolved up front so a failure surfaces the same 502 it always has,
+  // rather than deferring it to whichever slide happens to hit it first.
+  let slides: Slide[]
+  try {
+    slides = await getSlidesForDensity(textDensity)
+  } catch (err) {
+    console.error('designer: failed to resolve default text_density script', err)
+    return NextResponse.json(
+      { error: `Failed to rewrite script for "${textDensity}" density` },
+      { status: 502 }
+    )
+  }
 
   const colors = pickColors(visualStyle, colorScheme)
   const logoUrl = visualStyle?.logo_url ?? null
@@ -365,19 +404,44 @@ export async function POST(request: Request) {
   // time the URL is (re)rendered client-side.
   const cacheBustVersion = Date.now()
 
+  const defaultDesign: DesignOptions = { colorScheme, textDensity }
+  // Tracks whichever headline/body actually got rendered into each
+  // slide's image (which can differ from the post-default `slides` array
+  // when a per-slide density override pulled a different rewritten
+  // variant) — carousel.slides.copy_text below must match what's in the
+  // image, not blanket-reuse the default script.
+  const renderedSlideContent = new Map<number, Slide>()
+
   const renderedSlides: { index: number; url: string }[] = []
   try {
     for (const slide of slides) {
+      // Layout template (and background mode) are always the post-level
+      // default, never overridden per slide — resolveSlideDesign() only
+      // ever touches colorScheme/textDensity, by construction (see
+      // lib/slideDesign.ts). If the resolved density differs from the
+      // slide's own script variant, that slide's body needs to come from
+      // the OTHER density's rewritten script (matched by index) — a color
+      // override alone reuses this slide's already-resolved body as-is.
+      const slideDesign = resolveSlideDesign(defaultDesign, slideOverrides, slide.index)
+      const slideColors =
+        slideDesign.colorScheme === colorScheme ? colors : pickColors(visualStyle, slideDesign.colorScheme)
+      let slideToRender = slide
+      if (slideDesign.textDensity !== textDensity) {
+        const densitySlides = await getSlidesForDensity(slideDesign.textDensity)
+        slideToRender = densitySlides.find((s) => s.index === slide.index) ?? slide
+      }
+      renderedSlideContent.set(slide.index, slideToRender)
+
       const png = await renderSlide(
-        slide,
+        slideToRender,
         total,
-        colors,
+        slideColors,
         fontConfig,
         fonts,
         layoutVariant,
         logoUrl,
         brandName,
-        textDensity,
+        slideDesign.textDensity,
         hierarchy,
         backgroundImageUrl,
         iconChoice
@@ -446,13 +510,20 @@ export async function POST(request: Request) {
     .schema('carousel')
     .from('slides')
     .insert(
-      slides.map((slide) => ({
-        post_id: postId,
-        slide_order: slide.index,
-        copy_text: `${slide.headline}\n\n${slide.body}`,
-        rendered_image_url:
-          renderedSlides.find((r) => r.index === slide.index)?.url ?? null,
-      }))
+      slides.map((slide) => {
+        // Falls back to the default-density slide if somehow missing from
+        // the map (shouldn't happen — every slide in `slides` is rendered
+        // in the loop above) rather than risking a crash over copy_text
+        // slightly disagreeing with the image for an edge case that
+        // should be unreachable.
+        const rendered = renderedSlideContent.get(slide.index) ?? slide
+        return {
+          post_id: postId,
+          slide_order: slide.index,
+          copy_text: `${rendered.headline}\n\n${rendered.body}`,
+          rendered_image_url: renderedSlides.find((r) => r.index === slide.index)?.url ?? null,
+        }
+      })
     )
 
   if (slidesErr) {
@@ -484,6 +555,7 @@ export async function POST(request: Request) {
       background_image_url: backgroundImageUrl,
       icon_name: iconChoice,
       typography_preset: typographyPreset,
+      slide_overrides: slideOverrides,
     })
     .eq('id', postId)
 
@@ -496,5 +568,6 @@ export async function POST(request: Request) {
     hierarchy: hierarchy,
     background_image_url: backgroundImageUrl,
     typography_preset: typographyPreset,
+    slide_overrides: slideOverrides,
   })
 }
