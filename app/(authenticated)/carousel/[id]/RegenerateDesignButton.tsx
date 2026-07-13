@@ -9,6 +9,7 @@ import DesignOptionsPanel, {
   LayoutVariant,
   TextDensity,
 } from './DesignOptionsPanel'
+import { SlideOverride } from '@/lib/slideDesign'
 
 // Pre-fills the AI image prompt so users can just click Generate, or edit
 // first. visual_style has no free-text "description" field (only
@@ -34,6 +35,11 @@ interface Props {
   brandColors?: Record<string, string> | null
   topic?: string
   brandName?: string | null
+  // Owned by DesignWorkspace.tsx (shared with the per-slide customize UI
+  // rendered below the slide grid) — this component just reads it and
+  // includes it in the request body on generate, same as every other
+  // design option here.
+  slideOverrides?: SlideOverride[]
 }
 
 export default function RegenerateDesignButton({
@@ -49,6 +55,7 @@ export default function RegenerateDesignButton({
   brandColors = null,
   topic = '',
   brandName = null,
+  slideOverrides = [],
 }: Props) {
   const router = useRouter()
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>(initialLayoutVariant)
@@ -153,6 +160,7 @@ export default function RegenerateDesignButton({
       background_image_url: effectiveBackgroundUrl,
       icon_name: iconSelection === 'auto' ? null : iconSelection,
       typography_preset: typographyPreset,
+      slide_overrides: slideOverrides,
     }
 
     // Gated behind NEXT_PUBLIC_DEBUG_DESIGNER rather than always-on: logs
