@@ -48,7 +48,7 @@ export default async function SlideEditorPage({
           buka editor ini lagi.
         </p>
       ) : (
-        <SlideEditor documents={documents} />
+        <SlideEditor postId={post.id} documents={documents} />
       )}
     </div>
   )

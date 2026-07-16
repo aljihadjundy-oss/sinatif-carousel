@@ -25,7 +25,11 @@ import {
   resolveSlideDesign,
 } from '@/lib/slideDesign'
 import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
-import { SlideDocument, getSlideDocumentContentError } from '@/lib/slideDocument'
+import {
+  SlideDocument,
+  getSlideDocumentContentError,
+  isSlideDocumentArray,
+} from '@/lib/slideDocument'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -196,7 +200,7 @@ export async function POST(request: Request) {
     .schema('carousel')
     .from('posts')
     .select(
-      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides'
+      'id, brand_profile_id, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides, slide_documents'
     )
     .eq('id', postId)
     .maybeSingle()
@@ -478,6 +482,17 @@ export async function POST(request: Request) {
   // column update, and leaves the previous documents in place.
   const compiledDocuments: SlideDocument[] = []
   let compileFailed = false
+  // Regenerate-vs-manual-edit policy (AUDIT.md risk R3, agreed product
+  // decision): a slide the user touched in the canvas editor
+  // (manuallyEdited: true, set by phase 3) is NOT recompiled — its
+  // existing document is carried forward verbatim, so a regenerate can
+  // never silently overwrite manual canvas work. Correspondence is by
+  // array position (slide.index is 1-based; documents are stored in
+  // slide order) — if the slide count changed since the edit, positions
+  // past the new count simply drop with the rest of the array.
+  const existingDocuments: SlideDocument[] = isSlideDocumentArray(post.slide_documents)
+    ? post.slide_documents
+    : []
   // Template-extra fonts (JetBrains Mono etc.) vary per resolved layout,
   // and per-slide layout overrides mean one request can compile several
   // variants — cache the font set per variant, not per slide.
@@ -541,6 +556,14 @@ export async function POST(request: Request) {
       )
 
       if (!compileFailed) {
+        const preserved = existingDocuments[slide.index - 1]
+        if (preserved?.manuallyEdited) {
+          console.log(
+            `designer: slide ${slide.index} of post ${postId} is manuallyEdited — ` +
+              'keeping its document, skipping recompile (PNG render still regenerates)'
+          )
+          compiledDocuments.push(preserved)
+        } else
         try {
           const doc = await compileTemplate(
             slideDesign.layoutTemplate,
