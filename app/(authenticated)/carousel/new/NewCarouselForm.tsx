@@ -5,24 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { BrandProfileSummary } from '@/lib/types'
-import DesignOptionsPanel, {
-  BackgroundMode,
-  Hierarchy,
-  IconSelection,
-  LayoutVariant,
-  TextDensity,
-} from '../[id]/DesignOptionsPanel'
-
-// Pre-fills the AI image prompt so users can just click Generate, or edit
-// first. visual_style has no free-text "description" field (only
-// structured colors/logo_url), so the brand name stands in as the style
-// cue instead of inventing a second descriptive field just for this.
-function defaultAiPrompt(topic: string, brandName: string | null): string {
-  const topicPart = topic.trim() || 'a modern professional topic'
-  return brandName
-    ? `professional photo related to: ${topicPart}, in the visual style of ${brandName}`
-    : `professional photo related to: ${topicPart}`
-}
+import { LAYOUT_OPTIONS, LayoutVariant, TextDensity } from '../[id]/DesignOptionsPanel'
 
 interface Props {
   profiles: BrandProfileSummary[]
@@ -66,69 +49,16 @@ export default function NewCarouselForm({ profiles }: Props) {
   // the design-options step below is shared across all three modes rather
   // than duplicated per mode.
   const [scriptedPostId, setScriptedPostId] = useState<string | null>(null)
-  const [optionsBrandColors, setOptionsBrandColors] = useState<Record<string, string> | null>(
-    null
-  )
 
-  // Design option state for the options step, mirroring
-  // RegenerateDesignButton.tsx's defaults except icon: "no icon" rather
-  // than "auto" is the deliberate first-generation default, per spec —
-  // auto-picking an icon before the user has seen any design felt more
-  // surprising than starting plain.
+  // Canva-flow redesign: the pre-generate step asks ONLY for a layout
+  // (the starting template) and text density. Everything else that used
+  // to live here — hierarchy, icon, typography, background, color scheme
+  // — moved into the canvas editor as per-slide tools; the generate call
+  // sends their neutral defaults. The chosen layout is a STARTING POINT
+  // per slide, not a binding rule: the editor owns everything after
+  // this screen.
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>('minimal')
-  const [colorScheme, setColorScheme] = useState('')
   const [textDensity, setTextDensity] = useState<TextDensity>('standard')
-  const [hierarchy, setHierarchy] = useState<Hierarchy>('balanced')
-  const [iconSelection, setIconSelection] = useState<IconSelection>('none')
-  const [typographyPreset, setTypographyPreset] = useState<string | null>(null)
-  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('solid')
-  // Switching to solid removes "Editorial (Gradient)" from the Layout
-  // dropdown (it only makes sense with a photo) — if it was selected,
-  // reset it rather than leaving a value with no matching <option>.
-  function handleBackgroundModeChange(mode: BackgroundMode) {
-    setBackgroundMode(mode)
-    if (mode === 'solid' && layoutVariant === 'editorial_gradient') {
-      setLayoutVariant('minimal')
-    }
-  }
-  const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
-  // Holds the confirmed AI-generated image URL once the user clicks "Use
-  // This Image" — separate from aiPreviewUrl, which holds a
-  // generated-but-not-yet-confirmed candidate (see DesignOptionsPanel.tsx).
-  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null)
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiPreviewUrl, setAiPreviewUrl] = useState<string | null>(null)
-  const [generatingAi, setGeneratingAi] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [designLoadingLabel, setDesignLoadingLabel] = useState('')
-
-  async function handleGenerateAiPreview() {
-    if (!scriptedPostId) return
-    setGeneratingAi(true)
-    setAiError(null)
-    const res = await fetch('/api/carousel/ai-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post_id: scriptedPostId, prompt: aiPrompt }),
-    })
-
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}))
-      setAiError(json.error ?? 'Image generation failed')
-      setGeneratingAi(false)
-      return
-    }
-
-    const { url } = await res.json()
-    setAiPreviewUrl(url)
-    setGeneratingAi(false)
-  }
-
-  function handleUseAiImage() {
-    if (!aiPreviewUrl) return
-    setBackgroundImageUrl(aiPreviewUrl)
-    setAiPreviewUrl(null)
-  }
 
   const loading = stage !== 'idle'
   const loadingLabel =
@@ -178,21 +108,6 @@ export default function NewCarouselForm({ profiles }: Props) {
   // than only getting control on a later "Regenerate Design".
   async function enterOptionsStage(id: string) {
     setScriptedPostId(id)
-
-    let brandName: string | null = null
-    if (brandProfileId) {
-      const { data: brand } = await supabase
-        .schema('carousel')
-        .from('brand_profiles')
-        .select('name, visual_style')
-        .eq('id', brandProfileId)
-        .maybeSingle()
-      const colors = (brand?.visual_style as { colors?: Record<string, string> } | null)?.colors
-      setOptionsBrandColors(colors ?? null)
-      brandName = brand?.name ?? null
-    }
-
-    setAiPrompt(defaultAiPrompt(topic, brandName))
     setStage('options')
   }
 
@@ -202,58 +117,37 @@ export default function NewCarouselForm({ profiles }: Props) {
     setStage('design')
     setError(null)
 
-    let effectiveBackgroundUrl: string | null =
-      backgroundMode === 'ai' ? backgroundImageUrl : null
-
-    if (backgroundMode === 'image' && backgroundFile) {
-      setDesignLoadingLabel('Mengunggah background…')
-      const formData = new FormData()
-      formData.append('post_id', scriptedPostId)
-      formData.append('file', backgroundFile)
-
-      const uploadRes = await fetch('/api/carousel/background-upload', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!uploadRes.ok) {
-        const json = await uploadRes.json().catch(() => ({}))
-        setError(json.error ?? 'Background upload failed')
-        setStage('options')
-        return
-      }
-
-      const { url } = await uploadRes.json()
-      effectiveBackgroundUrl = url
-    }
-
-    setDesignLoadingLabel('Membuat desain…')
     const designRes = await fetch('/api/carousel/designer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         post_id: scriptedPostId,
         layout_variant: layoutVariant,
-        color_scheme: colorScheme || null,
         text_density: textDensity,
-        hierarchy: hierarchy,
-        background_image_url: effectiveBackgroundUrl,
-        icon_name: iconSelection === 'auto' ? null : iconSelection,
-        typography_preset: typographyPreset,
+        // Moved-to-editor fields ship their neutral defaults on first
+        // generate; the canvas is where they're decided now (per slide).
+        color_scheme: null,
+        hierarchy: 'balanced',
+        background_image_url: null,
+        icon_name: 'none',
+        typography_preset: null,
       }),
     })
 
     if (!designRes.ok) {
       // Design generation failed, not script generation — the script step
-      // already succeeded by this point. Logged distinctly so this is
-      // never confused with a script-writer/Gemini failure. We still
-      // redirect: the script already exists, and the detail page offers
-      // a retry button for design generation.
+      // already succeeded by this point. The post page keeps its retry
+      // button, so fall back there instead of an editor with no
+      // documents.
       const json = await designRes.json().catch(() => ({}))
       console.error('Design generation failed:', json.error ?? designRes.statusText)
+      router.push(`/carousel/${scriptedPostId}`)
+      return
     }
 
-    router.push(`/carousel/${scriptedPostId}`)
+    // Generate = enter the canvas. The editor is the primary surface;
+    // the post page remains as an archive/download fallback.
+    router.push(`/carousel/${scriptedPostId}/editor`)
   }
 
   async function handleAiSubmit() {
@@ -406,42 +300,73 @@ export default function NewCarouselForm({ profiles }: Props) {
       <div className="space-y-5">
         <div>
           <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Script ready — choose design options
+            Script siap — pilih template awal
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Sensible defaults are already picked. Adjust anything below, or just
-            generate the design as-is.
+            Layout + kepadatan teks ini cuma titik awal per slide. Warna, background, font,
+            ikon, dan semua detail lain diatur bebas per slide di editor kanvas setelah ini.
           </p>
         </div>
 
-        <DesignOptionsPanel
-          layoutVariant={layoutVariant}
-          onLayoutVariantChange={setLayoutVariant}
-          colorScheme={colorScheme}
-          onColorSchemeChange={setColorScheme}
-          textDensity={textDensity}
-          onTextDensityChange={setTextDensity}
-          hierarchy={hierarchy}
-          onHierarchyChange={setHierarchy}
-          iconSelection={iconSelection}
-          onIconSelectionChange={setIconSelection}
-          typographyPreset={typographyPreset}
-          onTypographyPresetChange={setTypographyPreset}
-          backgroundMode={backgroundMode}
-          onBackgroundModeChange={handleBackgroundModeChange}
-          backgroundImageUrl={backgroundImageUrl}
-          backgroundFile={backgroundFile}
-          onBackgroundFileChange={setBackgroundFile}
-          aiPrompt={aiPrompt}
-          onAiPromptChange={setAiPrompt}
-          aiPreviewUrl={aiPreviewUrl}
-          onGeneratePreview={handleGenerateAiPreview}
-          onUseAiImage={handleUseAiImage}
-          generatingAi={generatingAi}
-          aiError={aiError}
-          brandColors={optionsBrandColors}
-          disabled={stage === 'design'}
-        />
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            Layout
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {LAYOUT_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setLayoutVariant(opt.key)}
+                disabled={stage === 'design'}
+                className={`rounded-lg border p-1.5 text-left transition-colors disabled:opacity-50 ${
+                  layoutVariant === opt.key
+                    ? 'border-blue-600 ring-1 ring-blue-600'
+                    : 'border-gray-200 hover:border-gray-300 dark:border-gray-700'
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/layout-previews/${opt.key}.png`}
+                  alt={opt.name}
+                  className="w-full rounded"
+                />
+                <span className="mt-1 block truncate text-[11px] text-gray-600 dark:text-gray-400">
+                  {opt.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            Kepadatan teks
+          </label>
+          <div className="flex gap-2">
+            {(
+              [
+                { value: 'concise', label: 'Concise' },
+                { value: 'standard', label: 'Standard' },
+                { value: 'detailed', label: 'Detailed' },
+              ] as { value: TextDensity; label: string }[]
+            ).map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setTextDensity(d.value)}
+                disabled={stage === 'design'}
+                className={`flex-1 rounded-md border py-1.5 text-sm transition-colors disabled:opacity-50 ${
+                  textDensity === d.value
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:text-gray-400'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button
           type="button"
@@ -449,7 +374,7 @@ export default function NewCarouselForm({ profiles }: Props) {
           disabled={stage === 'design'}
           className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
         >
-          {stage === 'design' ? designLoadingLabel || 'Membuat desain…' : 'Generate Design'}
+          {stage === 'design' ? 'Membuat desain & membuka editor…' : 'Generate Design'}
         </button>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
