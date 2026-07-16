@@ -9,6 +9,7 @@
 // Explicit React import so this module's JSX also works when executed
 // directly via `npx tsx` (see lib/slide-renderer.tsx for why).
 import React from 'react'
+import { CATALOG_ICON_NODES } from '@/lib/icon-catalog'
 import { __iconNode as trendingUpNode } from 'lucide-react/dist/esm/icons/trending-up.mjs'
 import { __iconNode as targetNode } from 'lucide-react/dist/esm/icons/target.mjs'
 import { __iconNode as lightbulbNode } from 'lucide-react/dist/esm/icons/lightbulb.mjs'
@@ -40,18 +41,26 @@ const ICON_NODES: Record<IconName, IconNode> = {
   ArrowRight: arrowRightNode as IconNode,
 }
 
+// Accepts any name from the asset-library catalog (lib/icon-catalog.ts)
+// or the legacy 5 above; unknown names render nothing rather than crash
+// (a document written by a newer catalog must degrade gracefully).
+// The tag renderer covers every SVG primitive the curated catalog's
+// lucide data actually uses — path/circle/line/rect/polyline/polygon/
+// ellipse — verified by rendering the whole catalog through the Satori
+// exporter, not assumed.
 export function LucideIcon({
   name,
   size = 48,
   color = 'currentColor',
   strokeWidth = 2,
 }: {
-  name: IconName
+  name: IconName | string
   size?: number
   color?: string
   strokeWidth?: number
 }) {
-  const node = ICON_NODES[name]
+  const node = ICON_NODES[name as IconName] ?? CATALOG_ICON_NODES[name]
+  if (!node) return null
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -70,6 +79,22 @@ export function LucideIcon({
           return <circle key={i} cx={attrs.cx} cy={attrs.cy} r={attrs.r} />
         if (tag === 'line')
           return <line key={i} x1={attrs.x1} y1={attrs.y1} x2={attrs.x2} y2={attrs.y2} />
+        if (tag === 'rect')
+          return (
+            <rect
+              key={i}
+              x={attrs.x}
+              y={attrs.y}
+              width={attrs.width}
+              height={attrs.height}
+              rx={attrs.rx}
+              ry={attrs.ry}
+            />
+          )
+        if (tag === 'polyline') return <polyline key={i} points={attrs.points} />
+        if (tag === 'polygon') return <polygon key={i} points={attrs.points} />
+        if (tag === 'ellipse')
+          return <ellipse key={i} cx={attrs.cx} cy={attrs.cy} rx={attrs.rx} ry={attrs.ry} />
         return null
       })}
     </svg>

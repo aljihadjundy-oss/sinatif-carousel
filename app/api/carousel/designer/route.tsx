@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { ICON_NAMES, IconName } from '@/lib/icons'
+import { CATALOG_ICON_NAMES } from '@/lib/icon-catalog'
 import { TYPOGRAPHY_PRESET_KEYS, getTypographyPreset } from '@/lib/typography-presets'
 import { rewriteSlidesForDensity } from '@/lib/ai-client'
 import {
@@ -33,6 +34,11 @@ import {
 } from '@/lib/slideDocument'
 
 export const runtime = 'nodejs'
+
+// Documents may reference legacy icon names (compiler output) or any
+// asset-library catalog icon (editor inserts) — the write boundary
+// accepts the union.
+const VALID_DOCUMENT_ICON_NAMES = Array.from(new Set([...ICON_NAMES, ...CATALOG_ICON_NAMES]))
 // This route does not call Gemini (generateStructuredContent) — it's pure
 // Satori rendering — but it renders every slide (up to 12) sequentially,
 // each involving font loading and an ImageResponse render plus a Storage
@@ -647,7 +653,7 @@ export async function POST(request: Request) {
           // from our own compiler, and the same check the phase-3
           // editor's write path must run against genuinely untrusted
           // input.
-          const contentError = getSlideDocumentContentError(doc, ICON_NAMES)
+          const contentError = getSlideDocumentContentError(doc, VALID_DOCUMENT_ICON_NAMES)
           if (contentError) throw new Error(contentError)
           compiledDocuments.push(doc)
         } catch (err) {

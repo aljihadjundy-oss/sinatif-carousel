@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { ICON_NAMES } from '@/lib/icons'
+import { CATALOG_ICON_NAMES } from '@/lib/icon-catalog'
 import {
   SlideDocument,
   getSlideDocumentContentError,
@@ -9,6 +10,11 @@ import {
 import { renderDocument } from '@/lib/render-document'
 
 export const runtime = 'nodejs'
+
+// Documents may reference legacy icon names (compiler output) or any
+// asset-library catalog icon (editor inserts) — the write boundary
+// accepts the union.
+const VALID_DOCUMENT_ICON_NAMES = Array.from(new Set([...ICON_NAMES, ...CATALOG_ICON_NAMES]))
 // Saving may re-render several edited slides' PNGs through satori —
 // same reasoning as the designer route's own maxDuration.
 export const maxDuration = 60
@@ -44,7 +50,7 @@ export async function PATCH(req: Request) {
     )
   }
   for (const doc of body.slide_documents) {
-    const contentError = getSlideDocumentContentError(doc, ICON_NAMES)
+    const contentError = getSlideDocumentContentError(doc, VALID_DOCUMENT_ICON_NAMES)
     if (contentError) {
       return NextResponse.json(
         { error: `slide_documents rejected: ${contentError}` },

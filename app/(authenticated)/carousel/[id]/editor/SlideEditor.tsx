@@ -12,6 +12,7 @@ import EditorOverlay, { NodeGeometry } from './EditorOverlay'
 import TextEditLayer from './TextEditLayer'
 import PropertiesPanel from './PropertiesPanel'
 import SlidePropertiesPanel from './SlidePropertiesPanel'
+import AssetDrawer, { ShapePrefab } from './AssetDrawer'
 
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
@@ -38,6 +39,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [assetDrawerOpen, setAssetDrawerOpen] = useState(false)
   const [history, setHistory] = useState<{ past: SlideDocument[][]; future: SlideDocument[][] }>({
     past: [],
     future: [],
@@ -188,6 +190,61 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
       setSelectedId(id)
     },
     [activeIndex, mutateActiveDocument]
+  )
+
+  // Asset-library inserts: same discrete-edit-unit plumbing as addNode.
+  // '__accent__' placeholders in prefabs resolve to a contrast-aware
+  // color against the active slide's background at insert time.
+  const insertColor = useCallback(() => {
+    const bg = documentsRef.current[activeIndex]?.canvas.background
+    return bg?.type === 'solid' ? getTextColorForBackground(bg.color) : '#FFFFFF'
+  }, [activeIndex])
+
+  const insertIcon = useCallback(
+    (name: string) => {
+      const id = createNodeId()
+      const node: SlideNode = {
+        id,
+        type: 'icon',
+        x: 468,
+        y: 603,
+        width: 144,
+        height: 144,
+        name,
+        color: insertColor(),
+        strokeWidth: 2,
+      }
+      mutateActiveDocument((doc) => ({ ...doc, nodes: [...doc.nodes, node] }))
+      commitEditUnitRef.current()
+      setSelectedId(id)
+    },
+    [mutateActiveDocument, insertColor]
+  )
+
+  const insertShapePrefab = useCallback(
+    (prefab: ShapePrefab) => {
+      const accent = insertColor()
+      const resolveColor = (c: string) => (c === '__accent__' ? accent : c)
+      const { label: _label, ...rest } = prefab
+      const fill =
+        rest.fill.type === 'solid'
+          ? { ...rest.fill, color: resolveColor(rest.fill.color) }
+          : structuredClone(rest.fill)
+      const id = createNodeId()
+      const node: SlideNode = {
+        ...structuredClone(rest),
+        fill,
+        ...(rest.stroke ? { stroke: { ...rest.stroke, color: resolveColor(rest.stroke.color) } } : {}),
+        id,
+        type: 'shape',
+        x: Math.round((1080 - prefab.width) / 2),
+        y: Math.round((1350 - prefab.height) / 2),
+      }
+      mutateActiveDocument((doc) => ({ ...doc, nodes: [...doc.nodes, node] }))
+      commitEditUnitRef.current()
+      setSelectedId(id)
+    },
+    [mutateActiveDocument, insertColor]
   )
 
   const deleteSelected = useCallback(() => {
@@ -411,6 +468,17 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           >
             + Lingkaran
           </button>
+          <button
+            type="button"
+            onClick={() => setAssetDrawerOpen((v) => !v)}
+            className={`rounded border px-2 py-1 text-xs ${
+              assetDrawerOpen
+                ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
+            }`}
+          >
+            ✦ Aset
+          </button>
           {selectedNode && (
             <button
               type="button"
@@ -487,6 +555,13 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           </span>
         </div>
       </div>
+      {assetDrawerOpen && (
+        <AssetDrawer
+          onInsertIcon={insertIcon}
+          onInsertShape={insertShapePrefab}
+          onClose={() => setAssetDrawerOpen(false)}
+        />
+      )}
       {selectedNode ? (
         <PropertiesPanel
           node={selectedNode}
