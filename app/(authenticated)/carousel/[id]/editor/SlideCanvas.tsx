@@ -46,10 +46,14 @@ interface Props {
   document: SlideDocument
   // Display width in px; the 1080-wide stage scales to fit it.
   displayWidth: number
+  // Node temporarily NOT rendered by the canvas — used while a text node
+  // is being edited inline, so the live textarea doesn't sit on top of a
+  // stale copy of the same text.
+  hiddenNodeId?: string | null
   children?: React.ReactNode
 }
 
-export default function SlideCanvas({ document, displayWidth, children }: Props) {
+export default function SlideCanvas({ document, displayWidth, hiddenNodeId = null, children }: Props) {
   const scale = displayWidth / document.canvas.width
   return (
     <div
@@ -71,9 +75,9 @@ export default function SlideCanvas({ document, displayWidth, children }: Props)
           ...canvasBackgroundCss(document.canvas.background),
         }}
       >
-        {document.nodes.map((node) => (
-          <CanvasNode key={node.id} node={node} />
-        ))}
+        {document.nodes.map((node) =>
+          node.id === hiddenNodeId ? null : <CanvasNode key={node.id} node={node} />
+        )}
         {children}
       </div>
     </div>

@@ -79,6 +79,11 @@ interface Props {
   // autosave/undo PRs hook here so a whole gesture is one history entry
   // and one save, not one per pointermove.
   onGestureEnd?: () => void
+  // Double-clicking a text node hands editing over to the inline
+  // textarea layer (phase 3c); while a node is being edited its hit
+  // area is disabled so the textarea receives the pointer events.
+  editingId?: string | null
+  onStartTextEdit?: (nodeId: string) => void
 }
 
 export default function EditorOverlay({
@@ -88,6 +93,8 @@ export default function EditorOverlay({
   onSelect,
   onNodeGeometryChange,
   onGestureEnd,
+  editingId = null,
+  onStartTextEdit,
 }: Props) {
   const [drag, setDrag] = useState<DragState | null>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -148,6 +155,11 @@ export default function EditorOverlay({
           <div
             key={node.id}
             onPointerDown={(e) => startGesture(e, node.id, 'move', rect)}
+            onDoubleClick={(e) => {
+              if (node.type !== 'text' || !onStartTextEdit) return
+              e.stopPropagation()
+              onStartTextEdit(node.id)
+            }}
             style={{
               position: 'absolute',
               left: rect.x,
@@ -155,6 +167,7 @@ export default function EditorOverlay({
               width: rect.width,
               height: rect.height,
               cursor: 'move',
+              pointerEvents: node.id === editingId ? 'none' : undefined,
               outline: selected ? `${2 / scale}px solid #2563eb` : undefined,
               outlineOffset: 0,
             }}
