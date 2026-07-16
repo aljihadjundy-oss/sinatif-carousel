@@ -37,3 +37,6 @@ next-env.d.ts
 
 # graphify
 /graphify-out/
+
+# visual snapshot test failure artifacts (diff/actual images)
+/tests/visual/__output__/
