@@ -24,6 +24,8 @@ import {
   reindexSlideOverrides,
   resolveSlideDesign,
 } from '@/lib/slideDesign'
+import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
+import { SlideDocument, getSlideDocumentContentError } from '@/lib/slideDocument'
 
 export const runtime = 'nodejs'
 // This route does not call Gemini (generateStructuredContent) — it's pure
@@ -467,6 +469,27 @@ export async function POST(request: Request) {
   const renderedSlideContent = new Map<number, Slide>()
 
   const renderedSlides: { index: number; url: string }[] = []
+  // Phase-2c: alongside the legacy PNG render, each slide is also
+  // compiled to a SlideDocument (same resolved design inputs) and the
+  // whole array persisted to posts.slide_documents. Parallel transition,
+  // not a replacement: the PNGs users see still come from renderSlide();
+  // the documents exist for the phase-3 editor to open. Compilation
+  // failure therefore must not fail the route — it logs, skips the
+  // column update, and leaves the previous documents in place.
+  const compiledDocuments: SlideDocument[] = []
+  let compileFailed = false
+  // Template-extra fonts (JetBrains Mono etc.) vary per resolved layout,
+  // and per-slide layout overrides mean one request can compile several
+  // variants — cache the font set per variant, not per slide.
+  const legacyFontSetCache = new Map<LayoutVariant, Awaited<ReturnType<typeof loadFontsForBrand>>>()
+  async function getLegacyFontSet(variant: LayoutVariant) {
+    const cached = legacyFontSetCache.get(variant)
+    if (cached) return cached
+    const set = await loadLegacyFontSet(variant, fontConfig)
+    legacyFontSetCache.set(variant, set)
+    return set
+  }
+
   try {
     for (const slide of slides) {
       // If the resolved density differs from the slide's own script
@@ -516,6 +539,45 @@ export async function POST(request: Request) {
         iconChoice,
         rawOverride?.customColors?.iconColor ?? null
       )
+
+      if (!compileFailed) {
+        try {
+          const doc = await compileTemplate(
+            slideDesign.layoutTemplate,
+            {
+              slide: slideToRender,
+              total,
+              colors: slideColors,
+              fontConfig,
+              textDensity: slideDesign.textDensity,
+              hierarchy,
+              logoUrl,
+              brandName,
+              backgroundImageUrl: slideDesign.backgroundImageUrl,
+              iconChoice,
+              iconColor: rawOverride?.customColors?.iconColor ?? null,
+            },
+            await getLegacyFontSet(slideDesign.layoutTemplate)
+          )
+          // Write-boundary validation (the gap PR #62 flagged): icon
+          // names against ICON_NAMES, every color against the hex/rgba
+          // format — defense in depth even though this document came
+          // from our own compiler, and the same check the phase-3
+          // editor's write path must run against genuinely untrusted
+          // input.
+          const contentError = getSlideDocumentContentError(doc, ICON_NAMES)
+          if (contentError) throw new Error(contentError)
+          compiledDocuments.push(doc)
+        } catch (err) {
+          console.error(
+            `designer: SlideDocument compile failed for post ${postId} slide ${slide.index} — ` +
+              'skipping slide_documents update for this generation (PNG render unaffected)',
+            err
+          )
+          compileFailed = true
+        }
+      }
+
       const path = `${postId}/slide-${slide.index}.png`
 
       const { error: uploadErr } = await supabase.storage
@@ -626,6 +688,13 @@ export async function POST(request: Request) {
       icon_name: iconChoice,
       typography_preset: typographyPreset,
       slide_overrides: slideOverrides,
+      // Compiled node-tree per slide (phase 2c). Every regenerate
+      // rewrites the whole array — safe today because documents are
+      // pure generator output (manuallyEdited is always false until the
+      // phase-3 editor exists; the regenerate-vs-manual-edit policy,
+      // AUDIT.md risk R3, lands with that editor). On compile failure
+      // the previous documents are deliberately left untouched.
+      ...(compileFailed ? {} : { slide_documents: compiledDocuments }),
     })
     .eq('id', postId)
 

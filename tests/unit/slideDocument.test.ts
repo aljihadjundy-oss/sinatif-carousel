@@ -150,3 +150,58 @@ describe('isSlideDocument / isSlideDocumentArray', () => {
     expect(isSlideDocumentArray('[]')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase-2c write-boundary content validation
+
+import { getSlideDocumentContentError, isValidNodeColor } from '@/lib/slideDocument'
+
+describe('isValidNodeColor', () => {
+  it('accepts hex (3/6/8) and rgb()/rgba()', () => {
+    for (const c of ['#fff', '#1d4ed8', '#1d4ed8cc', 'rgb(0,0,0)', 'rgba(255,255,255,0.85)', 'rgba(0,0,0,0)']) {
+      expect(isValidNodeColor(c), c).toBe(true)
+    }
+  })
+  it('rejects CSS keywords, url(), and garbage', () => {
+    for (const c of ['red', 'url(javascript:x)', 'linear-gradient(#000,#fff)', '#12345', 'rgba(0,0,0,2)', '']) {
+      expect(isValidNodeColor(c), c).toBe(false)
+    }
+  })
+})
+
+describe('getSlideDocumentContentError', () => {
+  const ICONS = ['Lightbulb', 'Target'] as const
+
+  it('passes a valid document', () => {
+    expect(getSlideDocumentContentError(validDocument(), ICONS)).toBeNull()
+  })
+
+  it('flags unknown icon names', () => {
+    const doc = validDocument()
+    doc.nodes.push({
+      id: crypto.randomUUID(),
+      type: 'icon',
+      x: 0, y: 0, width: 48, height: 48,
+      name: 'NotARealIcon',
+      color: '#ffffff',
+    })
+    expect(getSlideDocumentContentError(doc, ICONS)).toMatch(/unknown icon "NotARealIcon"/)
+  })
+
+  it('flags invalid colors on text, fills, gradient stops, and strokes', () => {
+    const bad = validDocument()
+    ;(bad.nodes[0] as { color: string }).color = 'red'
+    expect(getSlideDocumentContentError(bad, ICONS)).toMatch(/invalid color "red"/)
+
+    const badBg = validDocument()
+    badBg.canvas.background = {
+      type: 'linear-gradient',
+      angle: 180,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: 'not-a-color' },
+      ],
+    }
+    expect(getSlideDocumentContentError(badBg, ICONS)).toMatch(/invalid gradient stop color/)
+  })
+})

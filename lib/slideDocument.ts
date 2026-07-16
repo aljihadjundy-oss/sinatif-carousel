@@ -290,6 +290,72 @@ export function isSlideDocument(v: unknown): v is SlideDocument {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Write-boundary content validation (phase-2c) — the gap PR #62 flagged:
+// structural guards above guarantee shape, these guarantee VALUES that
+// downstream consumers dereference blindly. Applied by every route that
+// writes posts.slide_documents, whether the document came from the
+// compiler (defense in depth) or, later, from the phase-3 editor
+// (genuinely untrusted input).
+
+// Hex (#rgb/#rrggbb/#rrggbbaa) or rgb()/rgba() — the compiler emits both
+// (rgba comes from the legacy templates' gradient stops and translucent
+// fills), so hex-only validation would reject its own output.
+const COLOR_RE =
+  /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$|^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/
+
+export function isValidNodeColor(color: string): boolean {
+  return COLOR_RE.test(color)
+}
+
+function fillColorError(fill: Fill): string | null {
+  switch (fill.type) {
+    case 'solid':
+      return isValidNodeColor(fill.color) ? null : `invalid fill color "${fill.color}"`
+    case 'linear-gradient':
+      for (const stop of fill.stops) {
+        if (!isValidNodeColor(stop.color)) return `invalid gradient stop color "${stop.color}"`
+      }
+      return null
+    case 'image':
+      return null
+  }
+}
+
+// Returns a human-readable problem description, or null when the
+// document's colors and icon names are all valid. Icon names are checked
+// against the caller-supplied list (lib/icons' ICON_NAMES) rather than
+// imported here, keeping this module a leaf with no icon dependency.
+export function getSlideDocumentContentError(
+  doc: SlideDocument,
+  validIconNames: readonly string[]
+): string | null {
+  const bgError = fillColorError(doc.canvas.background)
+  if (bgError) return `canvas background: ${bgError}`
+  for (const node of doc.nodes) {
+    switch (node.type) {
+      case 'text':
+        if (!isValidNodeColor(node.color)) return `text node ${node.id}: invalid color "${node.color}"`
+        break
+      case 'shape': {
+        const err = fillColorError(node.fill)
+        if (err) return `shape node ${node.id}: ${err}`
+        if (node.stroke && !isValidNodeColor(node.stroke.color))
+          return `shape node ${node.id}: invalid stroke color "${node.stroke.color}"`
+        break
+      }
+      case 'icon':
+        if (!validIconNames.includes(node.name))
+          return `icon node ${node.id}: unknown icon "${node.name}"`
+        if (!isValidNodeColor(node.color)) return `icon node ${node.id}: invalid color "${node.color}"`
+        break
+      case 'image':
+        break
+    }
+  }
+  return null
+}
+
 // Validates the whole persisted column value (posts.slide_documents):
 // an array of documents with globally unique slide ids.
 export function isSlideDocumentArray(v: unknown): v is SlideDocument[] {
