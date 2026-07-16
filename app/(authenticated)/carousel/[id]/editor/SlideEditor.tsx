@@ -194,9 +194,10 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     if (!id) return
     const doc = documentsRef.current[activeIndex]
     const node = doc?.nodes.find((n) => n.id === id)
-    // Only the node types the editor fully manages are deletable in this
-    // MVP — images/icons stay read-only end to end.
-    if (!node || (node.type !== 'text' && node.type !== 'shape')) return
+    // Every node type is deletable now that all are fully interactive
+    // (phase 4.3) — an element you can select and move but not remove
+    // would be a trap.
+    if (!node) return
     mutateActiveDocument((d) => ({ ...d, nodes: d.nodes.filter((n) => n.id !== id) }))
     commitEditUnitRef.current()
     setSelectedId(null)
@@ -325,7 +326,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           >
             + Lingkaran
           </button>
-          {selectedNode && (selectedNode.type === 'text' || selectedNode.type === 'shape') && (
+          {selectedNode && (
             <button
               type="button"
               onClick={deleteSelected}
@@ -383,9 +384,9 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
             </button>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Klik teks/shape untuk memilih, tarik untuk memindah, tarik handle untuk mengubah
-            ukuran. Klik dua kali teks untuk mengedit isinya (Esc/klik luar untuk selesai).
-            Gambar & ikon masih read-only di MVP ini.
+            Klik elemen apa pun untuk memilih, tarik untuk memindah, tarik handle untuk
+            mengubah ukuran, Delete untuk menghapus. Klik dua kali teks untuk mengedit isinya
+            (Esc/klik luar untuk selesai).
           </p>
           <span
             className={`shrink-0 text-xs ${
