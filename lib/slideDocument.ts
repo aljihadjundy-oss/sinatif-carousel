@@ -86,7 +86,12 @@ export interface TextNode extends BaseNode {
   fontSize: number // px at canvas scale
   color: string // hex
   align: 'left' | 'center' | 'right'
-  lineHeight: number // multiplier, e.g. 1.3
+  // Multiplier, e.g. 1.3. Omitted = the font's natural ("normal") line
+  // height, exactly as satori computes it — several existing template
+  // text elements (e.g. minimal's slide number) never set line-height,
+  // and freezing a guessed number would shift them vs the phase-0
+  // baselines. Made optional during the phase-2 pilot for this reason.
+  lineHeight?: number
 }
 
 export interface ShapeNode extends BaseNode {
@@ -236,7 +241,7 @@ export function isSlideNode(v: unknown): v is SlideNode {
         isFiniteNumber(n.fontSize) &&
         isNonEmptyString(n.color) &&
         (n.align === 'left' || n.align === 'center' || n.align === 'right') &&
-        isFiniteNumber(n.lineHeight)
+        (n.lineHeight === undefined || isFiniteNumber(n.lineHeight))
       )
     case 'shape':
       return (
