@@ -13,6 +13,13 @@ import TextEditLayer from './TextEditLayer'
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
 const AUTOSAVE_DEBOUNCE_MS = 900
+// Snapshot-stack undo (phase 3e): documents arrays are small plain JSON
+// and every mutation already replaces them immutably, so whole-array
+// snapshots by reference are the simplest correct history — no patch
+// bookkeeping. One entry per completed edit unit (a full drag/resize
+// gesture, one inline text-editing session), not per pointermove or
+// keystroke.
+const HISTORY_LIMIT = 50
 
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 
@@ -28,6 +35,14 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [history, setHistory] = useState<{ past: SlideDocument[][]; future: SlideDocument[][] }>({
+    past: [],
+    future: [],
+  })
+  // Pre-edit snapshot of the current edit unit — set on the first
+  // mutation of a gesture (or when text editing starts), committed to
+  // history when the unit ends.
+  const unitSnapshotRef = useRef<SlideDocument[] | null>(null)
   // Autosave fires on document VERSIONS, not renders: bump on every real
   // edit, debounce, then PATCH the whole array. A ref mirrors the latest
   // documents so the debounced callback never captures a stale array.
@@ -61,6 +76,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
 
   const handleGeometryChange = useCallback(
     (nodeId: string, geometry: NodeGeometry) => {
+      if (unitSnapshotRef.current === null) unitSnapshotRef.current = documentsRef.current
       setDocuments((docs) =>
         docs.map((doc, i) => {
           if (i !== activeIndex) return doc
@@ -94,6 +110,54 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     },
     [activeIndex]
   )
+
+  const commitEditUnit = useCallback(() => {
+    const snapshot = unitSnapshotRef.current
+    unitSnapshotRef.current = null
+    if (!snapshot || snapshot === documentsRef.current) return
+    setHistory((h) => ({
+      past: [...h.past.slice(-(HISTORY_LIMIT - 1)), snapshot],
+      future: [],
+    }))
+  }, [])
+
+  const undo = useCallback(() => {
+    commitEditUnit() // a mid-air unit becomes its own entry first
+    setHistory((h) => {
+      if (h.past.length === 0) return h
+      const previous = h.past[h.past.length - 1]
+      const current = documentsRef.current
+      setDocuments(previous)
+      setEditVersion((v) => v + 1) // autosave persists the undo too
+      return { past: h.past.slice(0, -1), future: [...h.future, current] }
+    })
+  }, [commitEditUnit])
+
+  const redo = useCallback(() => {
+    setHistory((h) => {
+      if (h.future.length === 0) return h
+      const next = h.future[h.future.length - 1]
+      const current = documentsRef.current
+      setDocuments(next)
+      setEditVersion((v) => v + 1)
+      return { past: [...h.past, current], future: h.future.slice(0, -1) }
+    })
+  }, [])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // While the inline textarea is open, leave Ctrl+Z to the browser's
+      // native text-field undo.
+      if (editingId !== null) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [editingId, undo, redo])
 
   if (!active) return null
 
@@ -141,18 +205,43 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
               if (id !== editingId) setEditingId(null)
             }}
             onNodeGeometryChange={handleGeometryChange}
+            onGestureEnd={commitEditUnit}
             editingId={editingId}
-            onStartTextEdit={setEditingId}
+            onStartTextEdit={(id) => {
+              unitSnapshotRef.current = documentsRef.current
+              setEditingId(id)
+            }}
           />
           {editingNode && (
             <TextEditLayer
               node={editingNode}
               onTextChange={(text) => handleTextChange(editingNode.id, text)}
-              onDone={() => setEditingId(null)}
+              onDone={() => {
+                setEditingId(null)
+                commitEditUnit()
+              }}
             />
           )}
         </SlideCanvas>
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="flex shrink-0 gap-1.5">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={history.past.length === 0 && unitSnapshotRef.current === null}
+              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              ↩ Undo
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={history.future.length === 0}
+              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Redo ↪
+            </button>
+          </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Klik teks/shape untuk memilih, tarik untuk memindah, tarik handle untuk mengubah
             ukuran. Klik dua kali teks untuk mengedit isinya (Esc/klik luar untuk selesai).
