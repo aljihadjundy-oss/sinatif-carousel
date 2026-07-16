@@ -47,4 +47,10 @@ export interface CarouselPost {
   script: unknown
   status: string
   created_at: string
+  // carousel.posts.slide_documents (migration 0012): visual-editor node
+  // tree per slide, [] until the post is materialized for editing. Typed
+  // unknown at the DB boundary like `script` above — parse with
+  // isSlideDocumentArray() from lib/slideDocument.ts before trusting the
+  // shape.
+  slide_documents: unknown
 }
