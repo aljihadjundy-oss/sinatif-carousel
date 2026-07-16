@@ -4,7 +4,7 @@
 // interaction overlay (select/drag/resize as of 3b). Documents live in
 // local state here; persistence (autosave + manuallyEdited) and
 // undo/redo land in the follow-up phase-3 PRs.
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { SlideDocument, SlideNode } from '@/lib/slideDocument'
 import SlideCanvas from './SlideCanvas'
 import EditorOverlay, { NodeGeometry } from './EditorOverlay'
@@ -12,18 +12,52 @@ import TextEditLayer from './TextEditLayer'
 
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
+const AUTOSAVE_DEBOUNCE_MS = 900
+
+type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
+
 interface Props {
+  postId: string
   documents: SlideDocument[]
 }
 
-export default function SlideEditor({ documents: initialDocuments }: Props) {
+export default function SlideEditor({ postId, documents: initialDocuments }: Props) {
   const [documents, setDocuments] = useState(initialDocuments)
   const [activeIndex, setActiveIndex] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
 
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  // Autosave fires on document VERSIONS, not renders: bump on every real
+  // edit, debounce, then PATCH the whole array. A ref mirrors the latest
+  // documents so the debounced callback never captures a stale array.
+  const [editVersion, setEditVersion] = useState(0)
+  const documentsRef = useRef(documents)
+  documentsRef.current = documents
+
   const active = documents[activeIndex]
   const scale = active ? CANVAS_DISPLAY_WIDTH / active.canvas.width : 1
+
+  useEffect(() => {
+    if (editVersion === 0) return
+    setSaveState('dirty')
+    const timer = setTimeout(async () => {
+      setSaveState('saving')
+      try {
+        const res = await fetch('/api/carousel/slide-documents', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ post_id: postId, slide_documents: documentsRef.current }),
+        })
+        if (!res.ok) throw new Error(await res.text())
+        setSaveState('saved')
+      } catch (err) {
+        console.error('editor autosave failed', err)
+        setSaveState('error')
+      }
+    }, AUTOSAVE_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [editVersion, postId])
 
   const handleGeometryChange = useCallback(
     (nodeId: string, geometry: NodeGeometry) => {
@@ -32,10 +66,12 @@ export default function SlideEditor({ documents: initialDocuments }: Props) {
           if (i !== activeIndex) return doc
           return {
             ...doc,
+            manuallyEdited: true,
             nodes: doc.nodes.map((n): SlideNode => (n.id === nodeId ? { ...n, ...geometry } : n)),
           }
         })
       )
+      setEditVersion((v) => v + 1)
     },
     [activeIndex]
   )
@@ -47,12 +83,14 @@ export default function SlideEditor({ documents: initialDocuments }: Props) {
           if (i !== activeIndex) return doc
           return {
             ...doc,
+            manuallyEdited: true,
             nodes: doc.nodes.map((n): SlideNode =>
               n.id === nodeId && n.type === 'text' ? { ...n, text } : n
             ),
           }
         })
       )
+      setEditVersion((v) => v + 1)
     },
     [activeIndex]
   )
@@ -114,12 +152,25 @@ export default function SlideEditor({ documents: initialDocuments }: Props) {
             />
           )}
         </SlideCanvas>
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          Klik teks/shape untuk memilih, tarik untuk memindah, tarik handle untuk mengubah
-          ukuran. Klik dua kali teks untuk mengedit isinya (Esc/klik luar untuk selesai).
-          Gambar & ikon masih read-only di MVP ini. Perubahan belum tersimpan otomatis
-          (menyusul di PR berikutnya).
-        </p>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Klik teks/shape untuk memilih, tarik untuk memindah, tarik handle untuk mengubah
+            ukuran. Klik dua kali teks untuk mengedit isinya (Esc/klik luar untuk selesai).
+            Gambar & ikon masih read-only di MVP ini.
+          </p>
+          <span
+            className={`shrink-0 text-xs ${
+              saveState === 'error'
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-gray-400 dark:text-gray-500'
+            }`}
+          >
+            {saveState === 'dirty' && 'Perubahan belum tersimpan…'}
+            {saveState === 'saving' && 'Menyimpan…'}
+            {saveState === 'saved' && 'Tersimpan ✓'}
+            {saveState === 'error' && 'Gagal menyimpan — coba edit lagi'}
+          </span>
+        </div>
       </div>
     </div>
   )
