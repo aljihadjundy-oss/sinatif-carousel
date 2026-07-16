@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { ICON_NAMES, IconName } from '@/lib/icons'
-import { CATALOG_ICON_NAMES } from '@/lib/icon-catalog'
+import { ALL_ICON_NAMES, ICON_NAMES, IconName } from '@/lib/icons'
 import { TYPOGRAPHY_PRESET_KEYS, getTypographyPreset } from '@/lib/typography-presets'
 import { rewriteSlidesForDensity } from '@/lib/ai-client'
 import {
@@ -41,7 +40,7 @@ export const runtime = 'nodejs'
 // Documents may reference legacy icon names (compiler output) or any
 // asset-library catalog icon (editor inserts) — the write boundary
 // accepts the union.
-const VALID_DOCUMENT_ICON_NAMES = Array.from(new Set([...ICON_NAMES, ...CATALOG_ICON_NAMES]))
+const VALID_DOCUMENT_ICON_NAMES = ALL_ICON_NAMES
 // This route does not call Gemini (generateStructuredContent) — it's pure
 // Satori rendering — but it renders every slide (up to 12) sequentially,
 // each involving font loading and an ImageResponse render plus a Storage

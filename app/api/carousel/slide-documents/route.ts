@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { ICON_NAMES } from '@/lib/icons'
-import { CATALOG_ICON_NAMES } from '@/lib/icon-catalog'
+import { ALL_ICON_NAMES } from '@/lib/icons'
 import {
   SlideDocument,
   getSlideDocumentContentError,
@@ -14,7 +13,7 @@ export const runtime = 'nodejs'
 // Documents may reference legacy icon names (compiler output) or any
 // asset-library catalog icon (editor inserts) — the write boundary
 // accepts the union.
-const VALID_DOCUMENT_ICON_NAMES = Array.from(new Set([...ICON_NAMES, ...CATALOG_ICON_NAMES]))
+const VALID_DOCUMENT_ICON_NAMES = ALL_ICON_NAMES
 // Saving may re-render several edited slides' PNGs through satori —
 // same reasoning as the designer route's own maxDuration.
 export const maxDuration = 60
@@ -24,7 +23,7 @@ export const maxDuration = 60
 // designer route only persists its own compiler's output), so the full
 // validation stack from phases 1+2c runs here: structural guards
 // (isSlideDocumentArray — shape, version, unique UUIDs) and content
-// validation (icon names against ICON_NAMES, every color against
+// validation (icon names against ALL_ICON_NAMES, every color against
 // hex/rgb/rgba) before a byte is written.
 //
 // Ownership is enforced the same way every other carousel route does

@@ -8,7 +8,7 @@
 // in document coordinates and ignore the display scale.
 import React from 'react'
 import { Fill, SlideDocument, SlideNode } from '@/lib/slideDocument'
-import { IconName, ICON_NAMES, LucideIcon } from '@/lib/icons'
+import { LucideIcon } from '@/lib/icons'
 import { baseNodeCss, fillToCss, shapeNodeCss, textNodeCss } from './nodeStyles'
 
 function CanvasNode({ node }: { node: SlideNode }) {
@@ -23,16 +23,23 @@ function CanvasNode({ node }: { node: SlideNode }) {
         <img src={node.src} alt="" style={{ ...baseNodeCss(node), objectFit: node.fit }} />
       )
     case 'icon':
+      // LucideIcon accepts IconName | string and resolves from the merged
+      // legacy + asset-library catalog on its own (returning null for a
+      // genuinely unknown name) — see lib/icons.tsx. A prior gate here
+      // (`ICON_NAMES.includes(node.name)`) only recognized the 5 legacy
+      // names and silently blanked every one of the ~82 asset-library
+      // icons in the editor canvas, even though the exact same node
+      // rendered fine through renderDocument()'s export path (which never
+      // had that gate). Bug: icons picked from the asset library appeared
+      // to "not work" in the editor while still exporting correctly.
       return (
         <div style={{ ...baseNodeCss(node), display: 'flex' }}>
-          {ICON_NAMES.includes(node.name as IconName) ? (
-            <LucideIcon
-              name={node.name as IconName}
-              size={Math.min(node.width, node.height)}
-              color={node.color}
-              strokeWidth={node.strokeWidth ?? 2}
-            />
-          ) : null}
+          <LucideIcon
+            name={node.name}
+            size={Math.min(node.width, node.height)}
+            color={node.color}
+            strokeWidth={node.strokeWidth ?? 2}
+          />
         </div>
       )
   }
