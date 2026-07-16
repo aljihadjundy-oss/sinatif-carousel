@@ -40,3 +40,4 @@ next-env.d.ts
 
 # visual snapshot test failure artifacts (diff/actual images)
 /tests/visual/__output__/
+e2e/.data/
