@@ -96,8 +96,8 @@ export const DEFAULT_FONTS: FontConfig = {
 }
 
 // Fallback used to guarantee full glyph coverage (see loadFontsForBrand).
-const FALLBACK_FAMILY = 'Noto Sans'
-const FALLBACK_WEIGHT: FontWeight = 400
+export const FALLBACK_FAMILY = 'Noto Sans'
+export const FALLBACK_WEIGHT: FontWeight = 400
 
 // Bundled once (downloaded from Google Fonts' raw .ttf endpoints) into
 // public/fonts/ so rendering never depends on a live fetch to
@@ -132,7 +132,7 @@ export const FONT_FILES: Record<string, string> = {
 
 const fontFileCache = new Map<string, ArrayBuffer>()
 
-async function loadLocalFont(family: string, weight: number): Promise<ArrayBuffer> {
+export async function loadLocalFont(family: string, weight: number): Promise<ArrayBuffer> {
   const key = `${family}-${weight}`
   const cached = fontFileCache.get(key)
   if (cached) return cached
@@ -300,7 +300,7 @@ const BODY_CHAR_LIMIT_IMAGE_BG: Record<TextDensity, number> = {
   detailed: 480,
 }
 
-function applyTextDensity(
+export function applyTextDensity(
   body: string,
   density: TextDensity,
   hasBackgroundImage: boolean
@@ -310,7 +310,7 @@ function applyTextDensity(
   return `${body.slice(0, limit).trimEnd()}…`
 }
 
-const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
+export const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
   headline_focused: 76,
   balanced: 64,
 }
@@ -318,7 +318,7 @@ const HEADLINE_FONT_SIZE: Record<Hierarchy, number> = {
 // Headline-focused shrinks body text relative to whatever text_density
 // already picked, rather than a second independent size table competing
 // with it.
-function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
+export function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number {
   const base = BODY_FONT_SIZE[density]
   return hierarchy === 'headline_focused' ? Math.round(base * 0.85) : base
 }
