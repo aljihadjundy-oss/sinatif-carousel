@@ -248,6 +248,95 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     [mutateActiveDocument, insertColor]
   )
 
+  // Shared uploader for every photo entry point (insert element, replace
+  // image source, slide background) — one endpoint, one set of limits.
+  const uploadPhoto = useCallback(
+    async (file: File): Promise<{ url: string; width: number; height: number }> => {
+      const formData = new FormData()
+      formData.append('post_id', postId)
+      formData.append('file', file)
+      const res = await fetch('/api/carousel/editor-image-upload', { method: 'POST', body: formData })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Upload gagal')
+      return json
+    },
+    [postId]
+  )
+
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  const insertPhoto = useCallback(
+    async (file: File) => {
+      setUploadingPhoto(true)
+      setUploadError(null)
+      try {
+        const { url, width, height } = await uploadPhoto(file)
+        // Fit within ~2/3 canvas, preserving the photo's aspect ratio.
+        const scaleFit = Math.min(720 / width, 900 / height, 1)
+        const w = Math.round(width * scaleFit)
+        const h = Math.round(height * scaleFit)
+        const id = createNodeId()
+        const node: SlideNode = {
+          id,
+          type: 'image',
+          x: Math.round((1080 - w) / 2),
+          y: Math.round((1350 - h) / 2),
+          width: w,
+          height: h,
+          src: url,
+          fit: 'cover',
+        }
+        mutateActiveDocument((doc) => ({ ...doc, nodes: [...doc.nodes, node] }))
+        commitEditUnitRef.current()
+        setSelectedId(id)
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload gagal')
+      } finally {
+        setUploadingPhoto(false)
+      }
+    },
+    [uploadPhoto, mutateActiveDocument]
+  )
+
+  const replacePhotoSource = useCallback(
+    async (nodeId: string, file: File) => {
+      setUploadingPhoto(true)
+      setUploadError(null)
+      try {
+        const { url } = await uploadPhoto(file)
+        handleNodePropsChange(nodeId, { src: url })
+        commitEditUnitRef.current()
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload gagal')
+      } finally {
+        setUploadingPhoto(false)
+      }
+    },
+    [uploadPhoto, handleNodePropsChange]
+  )
+
+  const setBackgroundPhoto = useCallback(
+    async (file: File) => {
+      setUploadingPhoto(true)
+      setUploadError(null)
+      try {
+        const { url } = await uploadPhoto(file)
+        mutateActiveDocument((doc) => ({
+          ...doc,
+          canvas: { ...doc.canvas, background: { type: 'image', src: url, fit: 'cover' } },
+        }))
+        commitEditUnitRef.current()
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload gagal')
+      } finally {
+        setUploadingPhoto(false)
+      }
+    },
+    [uploadPhoto, mutateActiveDocument]
+  )
+
   const deleteSelected = useCallback(() => {
     const id = selectedId
     if (!id) return
@@ -469,6 +558,25 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           >
             + Lingkaran
           </button>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) insertPhoto(file)
+              e.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={uploadingPhoto}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            {uploadingPhoto ? 'Mengunggah…' : '🖼 Foto'}
+          </button>
           <button
             type="button"
             onClick={() => setAssetDrawerOpen((v) => !v)}
@@ -553,6 +661,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
             {saveState === 'saving' && 'Menyimpan…'}
             {saveState === 'saved' && 'Tersimpan ✓'}
             {saveState === 'error' && 'Gagal menyimpan — coba edit lagi'}
+            {uploadError && <span className="ml-2 text-red-600 dark:text-red-400">{uploadError}</span>}
           </span>
         </div>
       </div>
@@ -569,12 +678,16 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           canvasBackground={active.canvas.background}
           onUpdateNode={handleNodePropsChange}
           onCommit={commitEditUnit}
+          onReplaceImage={replacePhotoSource}
+          uploadingPhoto={uploadingPhoto}
         />
       ) : (
         <SlidePropertiesPanel
           document={active}
           onMutateDocument={mutateActiveDocument}
           onCommit={commitEditUnit}
+          onUploadBackgroundPhoto={setBackgroundPhoto}
+          uploadingPhoto={uploadingPhoto}
         />
       )}
       </div>
