@@ -5,7 +5,8 @@
 // local state here; persistence (autosave + manuallyEdited) and
 // undo/redo land in the follow-up phase-3 PRs.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SlideDocument, SlideNode } from '@/lib/slideDocument'
+import { SlideDocument, SlideNode, createNodeId } from '@/lib/slideDocument'
+import { getTextColorForBackground } from '@/lib/contrast'
 import SlideCanvas from './SlideCanvas'
 import EditorOverlay, { NodeGeometry } from './EditorOverlay'
 import TextEditLayer from './TextEditLayer'
@@ -132,6 +133,76 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     [activeIndex]
   )
 
+  // Adding/deleting is a discrete action: snapshot, mutate, commit —
+  // one history entry each, same manuallyEdited/autosave plumbing as
+  // every other edit.
+  const mutateActiveDocument = useCallback(
+    (mutate: (doc: SlideDocument) => SlideDocument) => {
+      if (unitSnapshotRef.current === null) unitSnapshotRef.current = documentsRef.current
+      setDocuments((docs) =>
+        docs.map((doc, i) => (i === activeIndex ? { ...mutate(doc), manuallyEdited: true } : doc))
+      )
+      setEditVersion((v) => v + 1)
+    },
+    [activeIndex]
+  )
+
+  const addNode = useCallback(
+    (kind: 'text' | 'rect' | 'ellipse') => {
+      const bg = documentsRef.current[activeIndex]?.canvas.background
+      // New elements default to a color that reads against a solid
+      // background; on photo/gradient backgrounds default to white (the
+      // properties panel is right there to change it).
+      const contrastColor = bg?.type === 'solid' ? getTextColorForBackground(bg.color) : '#FFFFFF'
+      const id = createNodeId()
+      const node: SlideNode =
+        kind === 'text'
+          ? {
+              id,
+              type: 'text',
+              x: 240,
+              y: 560,
+              width: 600,
+              height: 60,
+              text: 'Teks baru — klik dua kali untuk mengedit',
+              fontFamily: 'Inter',
+              fontWeight: 400,
+              fontSize: 36,
+              color: contrastColor,
+              align: 'left',
+              lineHeight: 1.3,
+            }
+          : {
+              id,
+              type: 'shape',
+              x: 390,
+              y: 525,
+              width: 300,
+              height: 300,
+              shape: kind,
+              fill: { type: 'solid', color: contrastColor },
+            }
+      mutateActiveDocument((doc) => ({ ...doc, nodes: [...doc.nodes, node] }))
+      commitEditUnitRef.current()
+      setSelectedId(id)
+    },
+    [activeIndex, mutateActiveDocument]
+  )
+
+  const deleteSelected = useCallback(() => {
+    const id = selectedId
+    if (!id) return
+    const doc = documentsRef.current[activeIndex]
+    const node = doc?.nodes.find((n) => n.id === id)
+    // Only the node types the editor fully manages are deletable in this
+    // MVP — images/icons stay read-only end to end.
+    if (!node || (node.type !== 'text' && node.type !== 'shape')) return
+    mutateActiveDocument((d) => ({ ...d, nodes: d.nodes.filter((n) => n.id !== id) }))
+    commitEditUnitRef.current()
+    setSelectedId(null)
+    setEditingId(null)
+  }, [selectedId, activeIndex, mutateActiveDocument])
+
   const commitEditUnit = useCallback(() => {
     const snapshot = unitSnapshotRef.current
     unitSnapshotRef.current = null
@@ -141,6 +212,9 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
       future: [],
     }))
   }, [])
+
+  const commitEditUnitRef = useRef(commitEditUnit)
+  commitEditUnitRef.current = commitEditUnit
 
   const undo = useCallback(() => {
     commitEditUnit() // a mid-air unit becomes its own entry first
@@ -165,6 +239,9 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     })
   }, [])
 
+  const deleteSelectedRef = useRef(deleteSelected)
+  deleteSelectedRef.current = deleteSelected
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       // While the inline textarea is open, leave Ctrl+Z to the browser's
@@ -174,6 +251,13 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
         e.preventDefault()
         if (e.shiftKey) redo()
         else undo()
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Never while typing in some other form control on the page.
+        const tag = (e.target as HTMLElement | null)?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        e.preventDefault()
+        deleteSelectedRef.current()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -219,6 +303,38 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
       </div>
       <div className="flex items-start gap-4">
       <div>
+        <div className="mb-2 flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => addNode('text')}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            + Teks
+          </button>
+          <button
+            type="button"
+            onClick={() => addNode('rect')}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            + Kotak
+          </button>
+          <button
+            type="button"
+            onClick={() => addNode('ellipse')}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            + Lingkaran
+          </button>
+          {selectedNode && (selectedNode.type === 'text' || selectedNode.type === 'shape') && (
+            <button
+              type="button"
+              onClick={deleteSelected}
+              className="ml-auto rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+            >
+              Hapus elemen
+            </button>
+          )}
+        </div>
         <SlideCanvas document={active} displayWidth={CANVAS_DISPLAY_WIDTH} hiddenNodeId={editingId}>
           <EditorOverlay
             document={active}
