@@ -154,14 +154,21 @@ Diurutkan dari yang paling menghambat:
 
 ### Fase yang disarankan
 
-> **Status (Jul 2026):** Fase 0 selesai (PR #61 — 30 baseline snapshot visual, vitest+pixelmatch).
-> Fase 1 selesai (PR #62 — `slide_documents` JSONB + `lib/slideDocument.ts`).
-> Fase 2 selesai: pilot `minimal` di paritas 0.00000% (PR #63), 8 template sisanya via probe rendering —
-> 27/30 kasus pixel-perfect, terminal_dev 0.011% & news_card ~0.0014% (residual AA sub-piksel,
-> threshold 0.02% tidak dilonggarkan) (PR #64), integrasi ke designer route + validasi write-boundary
-> (icon name + format warna) (PR fase 2c). Risk R1 terjawab: pengukuran teks & layout dilakukan lewat
-> engine produksi itu sendiri (lib/measure-text.ts, lib/template-probe.tsx), bukan re-implementasi.
-> Fase 3+ (editor UI) menunggu approval owner. Kebijakan R3 (regenerate vs manuallyEdited) dieksekusi di fase 3.
+> **Status (Jul 2026): SEMUA FASE (0–5) SELESAI.** Lihat "Ringkasan Akhir Migrasi" di bawah.
+> - Fase 0 (PR #61): 30 baseline snapshot visual, vitest+pixelmatch.
+> - Fase 1 (PR #62): `slide_documents` JSONB + node tree ber-UUID (`lib/slideDocument.ts`).
+> - Fase 2 (PR #63–65): compiler 9 template → SlideDocument (27/30 kasus pixel-perfect 0.00000%;
+>   terminal_dev 0.011%, news_card ~0.0014% — residual AA, threshold 0.02% tidak dilonggarkan),
+>   `renderDocument()` exporter, integrasi designer route + validasi write-boundary. Risk R1 terjawab
+>   dengan mengukur lewat engine produksi sendiri (lib/measure-text.ts, lib/template-probe.tsx).
+> - Fase 3 (PR #66–70): editor kanvas DOM (nol dependency baru) — select/drag/resize, edit teks
+>   inline, autosave + `manuallyEdited`, undo/redo.
+> - Gap export (PR #71): PNG slide ter-edit dirender dari dokumennya via `renderDocument()`.
+> - Fase 4 (PR #72–75): panel properti font/warna (+contrast warning advisory), tambah/hapus elemen,
+>   image/icon interaktif penuh, reorder/duplicate slide.
+> - Fase 5 (PR #76–78): regenerate direncanakan di atas array dokumen (kerja manual tidak bisa hilang
+>   by construction), UI slide_overrides lama di-gate untuk post bermigrasi (R4 lazy materialization),
+>   audit final index-as-identity + review konflik.
 
 | Fase | Isi | Perkiraan bobot relatif |
 |---|---|---|
@@ -196,3 +203,28 @@ Kasarnya ini setara **beberapa kali lipat total usaha seri per-slide-override ya
 3. **Editor client-side dengan react-konva** (atau DOM + react-moveable jika inline text editing diprioritaskan) + Zustand + undo/redo berbasis snapshot/patch.
 4. **Kerjakan incremental dengan safety net**: snapshot test dulu, pilot satu template, baru sisanya.
 5. **Jangan bangun canvas engine sendiri**, dan pertimbangkan Polotno SDK jika kecepatan rilis lebih penting daripada kontrol penuh.
+
+---
+
+## Ringkasan Akhir Migrasi (Fase 0–5, Jul 2026)
+
+### Apa yang berubah total dari arsitektur awal
+
+| Aspek | Sebelum (audit awal) | Sesudah (fase 5 selesai) |
+|---|---|---|
+| Representasi slide | Kode: 9 branch JSX di renderer 1.967 baris; opsi desain = parameter post-level + `slide_overrides` | Data: `SlideDocument` node tree ber-UUID di `posts.slide_documents`, ter-materialize otomatis di tiap generate (compiler `lib/template-compiler.tsx`) |
+| Render | Server-only (Satori → PNG), user hanya melihat `<img>` | Editor kanvas DOM client-side penuh (select/drag/resize/edit teks/tambah-hapus elemen/properti font-warna/reorder-duplicate/undo-redo) + Satori tetap sebagai exporter (`renderDocument()`) yang terbukti paritas piksel |
+| Identitas slide/elemen | Index posisi 1-based di 4 struktur paralel | UUID untuk slide dan node; index tersisa hanya sebagai cache posisional (`slide-N.png`, `slides.slide_order` — ditulis konsisten oleh kedua jalur dan dibersihkan per jumlah final) dan kunci input generator (`slide_overrides` — script-scoped, UI-nya di-gate) |
+| Konflik generate↔edit | Tidak ada konsep edit manual | `manuallyEdited` per slide; regenerate direncanakan di atas array dokumen: slide ter-edit/duplikat dibawa verbatim by construction, slide belum disentuh recompile dari script; notice eksplisit di UI |
+| Keamanan perubahan | Tanpa test | 72 test: 30 baseline visual fase 0, 30 parity gate compiler, 12 unit; validasi write-boundary untuk JSONB untrusted |
+| Dependency | — | Nol dependency runtime baru; dev-only: vitest, pixelmatch, pngjs (semua MIT) |
+
+### Known limitations keseluruhan tool (bukan hanya fase 5)
+
+1. **Line-breaking browser vs Satori** — metrik glyph identik (file font sama), tapi teks panjang bisa wrap satu kata berbeda antara kanvas editor dan PNG export. Export sendiri stabil (parity suite); gap hanya editor-vs-export, disclosed sejak PR #66.
+2. **Konflik arah-balik script↔dokumen** — mengedit script lalu regenerate TIDAK mengubah slide `manuallyEdited` (proteksi 5.1 memang mempertahankannya verbatim). Teks baru dari script tidak otomatis masuk ke slide ter-edit; user harus mengedit slide itu di kanvas. Tidak ada silent loss, tapi ada "silent not-updated" yang dijelaskan lewat notice amber di halaman post.
+3. **Multi-tab last-write-wins** — dua tab editor pada post yang sama saling menimpa via autosave array penuh; belum ada locking/merge.
+4. **Ganti sumber gambar & tambah ImageNode/IconNode baru** di editor belum ada (butuh flow upload/pilih ikon — kandidat fase berikutnya).
+5. **Slide ter-edit membeku terhadap opsi desain post-level** — ganti layout/palet tidak menyentuh slide `manuallyEdited` (konsekuensi disengaja dari no-silent-loss; "reset slide ke hasil generate" per-slide adalah kandidat fitur lanjutan).
+6. **Residual AA sub-piksel** terminal_dev (0.011%) & news_card (~0.0014%) di parity gate — konstan, bukan pergeseran layout.
+7. **Baseline PNG ~5 MB di repo** — pertimbangkan Git LFS bila membengkak.
