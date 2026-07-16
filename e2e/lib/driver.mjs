@@ -17,7 +17,16 @@ export async function launch() {
 
 export async function login(page) {
   await page.goto(`${APP}/login`)
-  await page.fill('input[type="email"]', CREDS.email)
+  // A context that already holds a session is redirected off /login (or
+  // renders no form) — treat that as already-logged-in, don't wait 30s.
+  if (page.url().includes('/dashboard')) return
+  const email = page.locator('input[type="email"]')
+  try {
+    await email.waitFor({ timeout: 4000 })
+  } catch {
+    return
+  }
+  await email.fill(CREDS.email)
   await page.fill('input[type="password"]', CREDS.password)
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard', { timeout: 20000 })
