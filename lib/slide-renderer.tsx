@@ -334,7 +334,7 @@ export function bodyFontSize(density: TextDensity, hierarchy: Hierarchy): number
 // rendering real "detailed" (~50-70 word) rewrites through the pipeline
 // and checking for overlap with the headline/slide-number badge, the
 // same technique used for the density char caps above.
-function imageBgBodyFontSize(density: TextDensity, hierarchy: Hierarchy, bodyLength: number): number {
+export function imageBgBodyFontSize(density: TextDensity, hierarchy: Hierarchy, bodyLength: number): number {
   const base = BODY_FONT_SIZE[density]
   let scale: number
   if (bodyLength <= 90) scale = 0.8
@@ -392,7 +392,7 @@ function slideNumberBadge(
 // of the 1350px canvas. Chosen to comfortably fit headline + a capped
 // body + slide number (see BODY_CHAR_LIMIT_IMAGE_BG) without the block
 // itself dominating the photo.
-const BOTTOM_BLOCK_HEIGHT = 540
+export const BOTTOM_BLOCK_HEIGHT = 540
 
 const LIST_MARKER_RE = /^(\d{1,2}[.)]|[-•*])\s*/
 
@@ -449,7 +449,7 @@ export function parseListItems(body: string): string[] | null {
 // than a full-slide paragraph.
 const CARD_HIGHLIGHT_CHAR_LIMIT = 90
 
-function extractCardHighlight(body: string, headline: string): string {
+export function extractCardHighlight(body: string, headline: string): string {
   const sentences = body
     .split('. ')
     .map((s) => s.trim())
@@ -476,7 +476,7 @@ function truncateTerminalLine(text: string): string {
   return `${trimmed.slice(0, TERMINAL_LINE_CHAR_LIMIT).trimEnd()}…`
 }
 
-function buildTerminalLines(body: string): string[] {
+export function buildTerminalLines(body: string): string[] {
   const listItems = parseListItems(body)
   const rawLines =
     listItems ??
