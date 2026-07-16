@@ -6,9 +6,11 @@
 // display scale appears is when converting pointer deltas (screen px)
 // back into document px.
 //
-// MVP interaction scope (per the phase brief): text and shape nodes get
-// the full select/drag/resize treatment; image and icon nodes render
-// read-only and aren't selectable — adding/moving those is phase 4.
+// As of phase 4.3 every node type is selectable/draggable/resizable —
+// the phase-3 text/shape-only boundary was an MVP scope cut, not a
+// technical one, and the geometry math is type-agnostic. Inline TEXT
+// editing stays text-only, and the properties panel simply shows fewer
+// controls for images.
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { SlideDocument, SlideNode } from '@/lib/slideDocument'
 
@@ -20,7 +22,8 @@ export interface NodeGeometry {
 }
 
 export function isInteractiveNode(node: SlideNode): boolean {
-  return node.type === 'text' || node.type === 'shape'
+  void node
+  return true
 }
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const

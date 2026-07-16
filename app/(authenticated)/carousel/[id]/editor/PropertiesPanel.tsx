@@ -10,7 +10,7 @@ import {
   getManualColorContrastWarning,
   getManualShapeContrastWarning,
 } from '@/lib/contrast'
-import { Fill, ShapeNode, SlideNode, TextNode } from '@/lib/slideDocument'
+import { Fill, IconNode, ShapeNode, SlideNode, TextNode } from '@/lib/slideDocument'
 
 const FONT_WEIGHT_LABELS: Record<number, string> = {
   400: 'Regular (400)',
@@ -37,7 +37,10 @@ function toPickerHex(color: string): string {
 interface Props {
   node: SlideNode
   canvasBackground: Fill
-  onUpdateNode: (nodeId: string, partial: Partial<TextNode> | Partial<ShapeNode>) => void
+  onUpdateNode: (
+    nodeId: string,
+    partial: Partial<TextNode> | Partial<ShapeNode> | Partial<IconNode>
+  ) => void
   // Ends the current edit unit (history entry + autosave flush follows
   // via the normal debounce) — called on blur so a color-picker drag or
   // size spinner session is one undo step, not dozens.
@@ -47,13 +50,47 @@ interface Props {
 export default function PropertiesPanel({ node, canvasBackground, onUpdateNode, onCommit }: Props) {
   const bgSolid = canvasBackground.type === 'solid' ? canvasBackground.color : null
 
-  if (node.type !== 'text' && node.type !== 'shape') return null
+  if (node.type === 'image') {
+    return (
+      <div className="w-56 shrink-0 space-y-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Properti Gambar
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Geser/ubah ukuran langsung di kanvas. Mengganti sumber gambar belum tersedia di
+          fase ini.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="w-56 shrink-0 space-y-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
       <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-        {node.type === 'text' ? 'Properti Teks' : 'Properti Shape'}
+        {node.type === 'text' ? 'Properti Teks' : node.type === 'icon' ? 'Properti Ikon' : 'Properti Shape'}
       </div>
+
+      {node.type === 'icon' && (
+        <>
+          <label className="block">
+            <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">Warna ikon</span>
+            <input
+              type="color"
+              value={toPickerHex(node.color)}
+              onChange={(e) => onUpdateNode(node.id, { color: e.target.value })}
+              onBlur={onCommit}
+              className="h-8 w-full cursor-pointer rounded border border-gray-300 dark:border-gray-700"
+            />
+          </label>
+          {bgSolid &&
+            (() => {
+              const warning = getManualShapeContrastWarning(toPickerHex(node.color), bgSolid)
+              return warning ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
+              ) : null
+            })()}
+        </>
+      )}
 
       {node.type === 'text' && (
         <>
