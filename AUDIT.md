@@ -228,3 +228,18 @@ Kasarnya ini setara **beberapa kali lipat total usaha seri per-slide-override ya
 5. **Slide ter-edit membeku terhadap opsi desain post-level** — ganti layout/palet tidak menyentuh slide `manuallyEdited` (konsekuensi disengaja dari no-silent-loss; "reset slide ke hasil generate" per-slide adalah kandidat fitur lanjutan).
 6. **Residual AA sub-piksel** terminal_dev (0.011%) & news_card (~0.0014%) di parity gate — konstan, bukan pergeseran layout.
 7. **Baseline PNG ~5 MB di repo** — pertimbangkan Git LFS bila membengkak.
+
+---
+
+## Redesign Canva-Parity (pasca fase 0–5, Jul 2026 — PR #79–84)
+
+Requirement baru dari owner setelah memakai tool: flow dan mental model harus persis Canva.
+
+- **PR #79**: flow linear — generate langsung membuka editor kanvas; step pra-generate hanya layout + text density (hierarchy/icon/typography/background pindah ke editor sebagai tools per-slide). "From Research" & "From Article" = satu mode existing (textarea menerima keduanya).
+- **PR #80**: independensi per-slide dikeraskan — `duplicateSlideDocument` deep-clone (`structuredClone`), regression test mutasi in-place; satu-satunya celah shared-reference yang ditemukan.
+- **PR #81**: `SlidePropertiesPanel` — background per slide (solid/gradien/foto), preset tipografi & hierarki sebagai aksi per-slide atas node teks (bukan setting global lagi).
+- **PR #82**: asset library — 87 ikon Lucide terkurasi (6 kategori + search, mekanisme `__iconNode` Satori-safe; seluruh katalog diverifikasi render lewat exporter) + 15 shape prefab dari primitif ShapeNode existing (nol perubahan schema).
+- **PR #83**: upload foto per slide — insert elemen / ganti sumber / background slide; limit 8 MB/upload, 20 aset/post, normalisasi sisi terpanjang 1350px JPEG q80 (`{postId}/editor-assets/{uuid}.jpg`).
+- **PR #84**: Simpan & Download Semua sebagai aksi akhir DI DALAM editor — download menyimpan dulu bila dirty (server me-render ulang PNG slide yang berubah saat save), autosave tetap sebagai safety net.
+
+Fondasi fase 0–5 tetap utuh: SlideDocument ber-UUID sebagai source of truth, `manuallyEdited` + proteksi regenerate PR #76, `renderDocument()` exporter dengan parity, validasi write-boundary (kini menerima union ikon legacy + katalog).
