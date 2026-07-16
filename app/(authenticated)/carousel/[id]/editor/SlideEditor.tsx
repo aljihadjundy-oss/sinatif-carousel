@@ -225,6 +225,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     (prefab: ShapePrefab) => {
       const accent = insertColor()
       const resolveColor = (c: string) => (c === '__accent__' ? accent : c)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { label: _label, ...rest } = prefab
       const fill =
         rest.fill.type === 'solid'
