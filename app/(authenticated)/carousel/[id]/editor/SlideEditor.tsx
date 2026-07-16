@@ -5,7 +5,7 @@
 // local state here; persistence (autosave + manuallyEdited) and
 // undo/redo land in the follow-up phase-3 PRs.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SlideDocument, SlideNode, createNodeId } from '@/lib/slideDocument'
+import { SlideDocument, SlideNode, createNodeId, duplicateSlideDocument } from '@/lib/slideDocument'
 import { getTextColorForBackground } from '@/lib/contrast'
 import SlideCanvas from './SlideCanvas'
 import EditorOverlay, { NodeGeometry } from './EditorOverlay'
@@ -204,6 +204,55 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     setEditingId(null)
   }, [selectedId, activeIndex, mutateActiveDocument])
 
+  // Reorder/duplicate operate on the documents ARRAY. Every position
+  // whose occupant changed is marked manuallyEdited — array position is
+  // what the PNG paths / slides cache / regenerate preservation key on,
+  // so a slide sitting at a new position IS an edit of that position,
+  // and marking it (a) makes autosave re-render its PNG there and
+  // (b) shields it from being recompiled back into script order by the
+  // designer route.
+  const mutateDocumentsArray = useCallback((mutate: (docs: SlideDocument[]) => SlideDocument[]) => {
+    if (unitSnapshotRef.current === null) unitSnapshotRef.current = documentsRef.current
+    setDocuments((docs) => {
+      const next = mutate(docs)
+      return next.map((doc, i) =>
+        docs[i]?.id === doc.id ? doc : { ...doc, manuallyEdited: true }
+      )
+    })
+    setEditVersion((v) => v + 1)
+  }, [])
+
+  const moveSlide = useCallback(
+    (index: number, dir: -1 | 1) => {
+      const target = index + dir
+      if (target < 0 || target >= documentsRef.current.length) return
+      mutateDocumentsArray((docs) => {
+        const next = [...docs]
+        ;[next[index], next[target]] = [next[target], next[index]]
+        return next
+      })
+      commitEditUnitRef.current()
+      setActiveIndex(target)
+      setSelectedId(null)
+      setEditingId(null)
+    },
+    [mutateDocumentsArray]
+  )
+
+  const duplicateSlide = useCallback(
+    (index: number) => {
+      mutateDocumentsArray((docs) => {
+        const copy = { ...duplicateSlideDocument(docs[index]), manuallyEdited: true }
+        return [...docs.slice(0, index + 1), copy, ...docs.slice(index + 1)]
+      })
+      commitEditUnitRef.current()
+      setActiveIndex(index + 1)
+      setSelectedId(null)
+      setEditingId(null)
+    },
+    [mutateDocumentsArray]
+  )
+
   const commitEditUnit = useCallback(() => {
     const snapshot = unitSnapshotRef.current
     unitSnapshotRef.current = null
@@ -299,6 +348,41 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
                 className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle"
               />
             )}
+            <span className="mt-1 flex justify-center gap-1">
+              <span
+                role="button"
+                title="Pindah ke atas"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  moveSlide(i, -1)
+                }}
+                className={`rounded px-1 text-[10px] leading-4 ${i === 0 ? 'pointer-events-none opacity-30' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+              >
+                ↑
+              </span>
+              <span
+                role="button"
+                title="Pindah ke bawah"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  moveSlide(i, 1)
+                }}
+                className={`rounded px-1 text-[10px] leading-4 ${i === documents.length - 1 ? 'pointer-events-none opacity-30' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+              >
+                ↓
+              </span>
+              <span
+                role="button"
+                title="Duplikat slide"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  duplicateSlide(i)
+                }}
+                className="rounded px-1 text-[10px] leading-4 hover:bg-gray-200 dark:hover:bg-gray-700"
+              >
+                ⧉
+              </span>
+            </span>
           </button>
         ))}
       </div>
