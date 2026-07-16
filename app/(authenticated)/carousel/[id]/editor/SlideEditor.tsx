@@ -58,26 +58,80 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
   const active = documents[activeIndex]
   const scale = active ? CANVAS_DISPLAY_WIDTH / active.canvas.width : 1
 
+  // One save path for both the autosave safety net (debounced) and the
+  // explicit Simpan button (immediate) — the server re-renders changed
+  // slides' PNGs on every save, so "saved" also means "PNGs match what
+  // the canvas shows", which is what gates Download below.
+  const saveNow = useCallback(async () => {
+    setSaveState('saving')
+    try {
+      const res = await fetch('/api/carousel/slide-documents', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId, slide_documents: documentsRef.current }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSaveState('saved')
+      return true
+    } catch (err) {
+      console.error('editor save failed', err)
+      setSaveState('error')
+      return false
+    }
+  }, [postId])
+
   useEffect(() => {
     if (editVersion === 0) return
     setSaveState('dirty')
-    const timer = setTimeout(async () => {
-      setSaveState('saving')
-      try {
-        const res = await fetch('/api/carousel/slide-documents', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ post_id: postId, slide_documents: documentsRef.current }),
-        })
-        if (!res.ok) throw new Error(await res.text())
-        setSaveState('saved')
-      } catch (err) {
-        console.error('editor autosave failed', err)
-        setSaveState('error')
-      }
-    }, AUTOSAVE_DEBOUNCE_MS)
+    const timer = setTimeout(() => void saveNow(), AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [editVersion, postId])
+  }, [editVersion, postId, saveNow])
+
+  // Download All from inside the editor — the linear flow's end action.
+  // Guaranteed-fresh by construction: it saves first (if dirty), and the
+  // save endpoint re-renders every changed slide's PNG before returning,
+  // then the URLs are re-read from the slides cache it just updated.
+  const [downloading, setDownloading] = useState(false)
+  const downloadAll = useCallback(async () => {
+    setDownloading(true)
+    try {
+      if (saveState === 'dirty' || saveState === 'error') {
+        const ok = await saveNow()
+        if (!ok) return
+      }
+      const { createClient } = await import('@/lib/supabase')
+      const supabase = createClient()
+      const { data: rows } = await supabase
+        .schema('carousel')
+        .from('slides')
+        .select('slide_order, rendered_image_url')
+        .eq('post_id', postId)
+        .order('slide_order', { ascending: true })
+      const slides = (rows ?? []).filter((r) => r.rendered_image_url)
+      if (slides.length === 0) return
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      for (const s of slides) {
+        const res = await fetch(s.rendered_image_url!)
+        if (!res.ok) throw new Error(`Gagal mengambil slide ${s.slide_order}`)
+        zip.file(`slide-${s.slide_order}.png`, await res.blob())
+      }
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const link = window.document.createElement('a')
+      link.href = url
+      link.download = 'carousel-slides.zip'
+      window.document.body.appendChild(link)
+      link.click()
+      window.document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('editor download failed', err)
+      setUploadError(err instanceof Error ? err.message : 'Download gagal')
+    } finally {
+      setDownloading(false)
+    }
+  }, [postId, saveState, saveNow])
 
   const handleGeometryChange = useCallback(
     (nodeId: string, geometry: NodeGeometry) => {
@@ -536,6 +590,24 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
       </div>
       <div className="flex items-start gap-4">
       <div>
+        <div className="mb-2 flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => void saveNow()}
+            disabled={saveState === 'saving' || saveState === 'idle' || saveState === 'saved'}
+            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saveState === 'saving' ? 'Menyimpan…' : saveState === 'saved' ? 'Tersimpan ✓' : 'Simpan'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadAll()}
+            disabled={downloading || saveState === 'saving'}
+            className="rounded border border-blue-600 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-950"
+          >
+            {downloading ? 'Menyiapkan ZIP…' : 'Download Semua'}
+          </button>
+        </div>
         <div className="mb-2 flex gap-1.5">
           <button
             type="button"
