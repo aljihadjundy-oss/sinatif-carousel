@@ -25,6 +25,7 @@ import {
   resolveSlideDesign,
 } from '@/lib/slideDesign'
 import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
+import { renderDocument } from '@/lib/render-document'
 import {
   SlideDocument,
   getSlideDocumentContentError,
@@ -527,7 +528,16 @@ export async function POST(request: Request) {
       }
       renderedSlideContent.set(slide.index, slideToRender)
 
-      const png = await renderSlide(
+      // Export-gap fix: a manuallyEdited slide's PNG must come from its
+      // (preserved) document — the canvas edits live there, not in
+      // script/slide_overrides — via the parity-proven renderDocument().
+      // Untouched slides keep the legacy renderSlide() path unchanged.
+      const preservedDoc = existingDocuments[slide.index - 1]
+      const isPreserved = !!preservedDoc?.manuallyEdited
+
+      const png = isPreserved
+        ? await renderDocument(preservedDoc)
+        : await renderSlide(
         slideToRender,
         total,
         slideColors,
@@ -556,13 +566,12 @@ export async function POST(request: Request) {
       )
 
       if (!compileFailed) {
-        const preserved = existingDocuments[slide.index - 1]
-        if (preserved?.manuallyEdited) {
+        if (isPreserved) {
           console.log(
             `designer: slide ${slide.index} of post ${postId} is manuallyEdited — ` +
-              'keeping its document, skipping recompile (PNG render still regenerates)'
+              'keeping its document AND rendering its PNG from it (renderDocument)'
           )
-          compiledDocuments.push(preserved)
+          compiledDocuments.push(preservedDoc)
         } else
         try {
           const doc = await compileTemplate(
