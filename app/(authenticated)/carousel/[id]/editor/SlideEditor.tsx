@@ -1,12 +1,13 @@
 'use client'
 
-// Phase-3a shell: slide tab list + one active SlideCanvas. Interaction
-// (select/drag/resize/text edit/autosave/undo) lands in the follow-up
-// phase-3 PRs; this PR is deliberately just "SlideDocuments render in
-// the browser instead of only as exported PNGs".
-import { useState } from 'react'
-import { SlideDocument } from '@/lib/slideDocument'
+// Phase-3 editor shell: slide tabs + one active canvas with the
+// interaction overlay (select/drag/resize as of 3b). Documents live in
+// local state here; persistence (autosave + manuallyEdited) and
+// undo/redo land in the follow-up phase-3 PRs.
+import { useCallback, useState } from 'react'
+import { SlideDocument, SlideNode } from '@/lib/slideDocument'
 import SlideCanvas from './SlideCanvas'
+import EditorOverlay, { NodeGeometry } from './EditorOverlay'
 
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
@@ -14,9 +15,28 @@ interface Props {
   documents: SlideDocument[]
 }
 
-export default function SlideEditor({ documents }: Props) {
+export default function SlideEditor({ documents: initialDocuments }: Props) {
+  const [documents, setDocuments] = useState(initialDocuments)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
   const active = documents[activeIndex]
+  const scale = active ? CANVAS_DISPLAY_WIDTH / active.canvas.width : 1
+
+  const handleGeometryChange = useCallback(
+    (nodeId: string, geometry: NodeGeometry) => {
+      setDocuments((docs) =>
+        docs.map((doc, i) => {
+          if (i !== activeIndex) return doc
+          return {
+            ...doc,
+            nodes: doc.nodes.map((n): SlideNode => (n.id === nodeId ? { ...n, ...geometry } : n)),
+          }
+        })
+      )
+    },
+    [activeIndex]
+  )
 
   if (!active) return null
 
@@ -27,7 +47,10 @@ export default function SlideEditor({ documents }: Props) {
           <button
             key={doc.id}
             type="button"
-            onClick={() => setActiveIndex(i)}
+            onClick={() => {
+              setActiveIndex(i)
+              setSelectedId(null)
+            }}
             className={`rounded-md border px-2 py-3 text-sm font-medium transition-colors ${
               i === activeIndex
                 ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
@@ -45,9 +68,19 @@ export default function SlideEditor({ documents }: Props) {
         ))}
       </div>
       <div>
-        <SlideCanvas document={active} displayWidth={CANVAS_DISPLAY_WIDTH} />
+        <SlideCanvas document={active} displayWidth={CANVAS_DISPLAY_WIDTH}>
+          <EditorOverlay
+            document={active}
+            scale={scale}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onNodeGeometryChange={handleGeometryChange}
+          />
+        </SlideCanvas>
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          Pratinjau kanvas (read-only). Interaksi edit menyusul di PR fase 3 berikutnya.
+          Klik teks/shape untuk memilih, tarik untuk memindah, tarik handle untuk mengubah
+          ukuran. Gambar & ikon masih read-only di MVP ini. Perubahan belum tersimpan
+          otomatis (menyusul di PR berikutnya).
         </p>
       </div>
     </div>
