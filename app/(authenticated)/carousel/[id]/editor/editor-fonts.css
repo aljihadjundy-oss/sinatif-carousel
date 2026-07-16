@@ -1,0 +1,22 @@
+/* Phase-3 editor: the SAME self-hosted font files the Satori exporter
+   reads off disk (lib/slide-renderer.tsx FONT_FILES → public/fonts/),
+   registered for the browser via @font-face — so glyph metrics in the
+   canvas match the exported PNG as closely as the two rasterizers allow.
+   One rule per (family, weight) pair in FONT_FILES; keep in sync when a
+   font is added there. */
+
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('/fonts/inter-400.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('/fonts/inter-600.ttf'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('/fonts/inter-700.ttf'); }
+@font-face { font-family: 'Khand'; font-weight: 700; src: url('/fonts/khand-700.ttf'); }
+@font-face { font-family: 'Nunito'; font-weight: 400; src: url('/fonts/nunito-400.ttf'); }
+@font-face { font-family: 'Cinzel'; font-weight: 700; src: url('/fonts/cinzel-700.ttf'); }
+@font-face { font-family: 'Poppins'; font-weight: 400; src: url('/fonts/poppins-400.ttf'); }
+@font-face { font-family: 'Archivo Black'; font-weight: 400; src: url('/fonts/archivo-black-400.ttf'); }
+@font-face { font-family: 'Architects Daughter'; font-weight: 400; src: url('/fonts/architects-daughter-400.ttf'); }
+@font-face { font-family: 'Noto Sans'; font-weight: 400; src: url('/fonts/noto-sans-400.ttf'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('/fonts/jetbrains-mono-400.woff'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 700; src: url('/fonts/jetbrains-mono-700.woff'); }
+@font-face { font-family: 'Playfair Display'; font-weight: 400; src: url('/fonts/playfair-display-400.woff'); }
+@font-face { font-family: 'Playfair Display'; font-weight: 700; src: url('/fonts/playfair-display-700.woff'); }
+@font-face { font-family: 'Caveat'; font-weight: 700; src: url('/fonts/caveat-700.woff'); }
