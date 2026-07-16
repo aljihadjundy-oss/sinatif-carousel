@@ -20,6 +20,11 @@ import { readFile } from 'fs/promises'
 import path from 'path'
 import { ImageResponse } from 'next/og'
 import { IconName, LucideIcon, pickSlideIcon } from '@/lib/icons'
+import { FONT_FILES } from '@/lib/font-catalog'
+
+// Re-exported so existing imports (scripts, compiler) keep working after
+// FONT_FILES moved to the pure, client-safe lib/font-catalog.ts.
+export { FONT_FILES }
 import {
   getContrastRatio,
   getLuminance,
@@ -112,23 +117,6 @@ export const FALLBACK_WEIGHT: FontWeight = 400
 // real ImageResponse render that satori accepts .woff data identically to
 // .ttf — loadLocalFont below just reads whatever file extension is named
 // here, no format-specific branching needed.
-export const FONT_FILES: Record<string, string> = {
-  'Inter-400': 'inter-400.ttf',
-  'Inter-600': 'inter-600.ttf',
-  'Inter-700': 'inter-700.ttf',
-  'Khand-700': 'khand-700.ttf',
-  'Nunito-400': 'nunito-400.ttf',
-  'Cinzel-700': 'cinzel-700.ttf',
-  'Poppins-400': 'poppins-400.ttf',
-  'Archivo Black-400': 'archivo-black-400.ttf',
-  'Architects Daughter-400': 'architects-daughter-400.ttf',
-  'Noto Sans-400': 'noto-sans-400.ttf',
-  'JetBrains Mono-400': 'jetbrains-mono-400.woff',
-  'JetBrains Mono-700': 'jetbrains-mono-700.woff',
-  'Playfair Display-400': 'playfair-display-400.woff',
-  'Playfair Display-700': 'playfair-display-700.woff',
-  'Caveat-700': 'caveat-700.woff',
-}
 
 const fontFileCache = new Map<string, ArrayBuffer>()
 

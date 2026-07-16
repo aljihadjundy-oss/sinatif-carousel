@@ -9,6 +9,7 @@ import { SlideDocument, SlideNode } from '@/lib/slideDocument'
 import SlideCanvas from './SlideCanvas'
 import EditorOverlay, { NodeGeometry } from './EditorOverlay'
 import TextEditLayer from './TextEditLayer'
+import PropertiesPanel from './PropertiesPanel'
 
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
@@ -111,6 +112,26 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
     [activeIndex]
   )
 
+  const handleNodePropsChange = useCallback(
+    (nodeId: string, partial: Partial<SlideNode>) => {
+      if (unitSnapshotRef.current === null) unitSnapshotRef.current = documentsRef.current
+      setDocuments((docs) =>
+        docs.map((doc, i) => {
+          if (i !== activeIndex) return doc
+          return {
+            ...doc,
+            manuallyEdited: true,
+            nodes: doc.nodes.map((n): SlideNode =>
+              n.id === nodeId ? ({ ...n, ...partial } as SlideNode) : n
+            ),
+          }
+        })
+      )
+      setEditVersion((v) => v + 1)
+    },
+    [activeIndex]
+  )
+
   const commitEditUnit = useCallback(() => {
     const snapshot = unitSnapshotRef.current
     unitSnapshotRef.current = null
@@ -161,6 +182,8 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
 
   if (!active) return null
 
+  const selectedNode = selectedId !== null ? active.nodes.find((n) => n.id === selectedId) ?? null : null
+
   const editingNode =
     editingId !== null
       ? active.nodes.find((n): n is Extract<SlideNode, { type: 'text' }> => n.id === editingId && n.type === 'text') ?? null
@@ -194,6 +217,7 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           </button>
         ))}
       </div>
+      <div className="flex items-start gap-4">
       <div>
         <SlideCanvas document={active} displayWidth={CANVAS_DISPLAY_WIDTH} hiddenNodeId={editingId}>
           <EditorOverlay
@@ -260,6 +284,15 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
             {saveState === 'error' && 'Gagal menyimpan — coba edit lagi'}
           </span>
         </div>
+      </div>
+      {selectedNode && (
+        <PropertiesPanel
+          node={selectedNode}
+          canvasBackground={active.canvas.background}
+          onUpdateNode={handleNodePropsChange}
+          onCommit={commitEditUnit}
+        />
+      )}
       </div>
     </div>
   )
