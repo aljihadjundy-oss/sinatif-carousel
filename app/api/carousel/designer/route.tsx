@@ -506,8 +506,68 @@ export async function POST(request: Request) {
     return set
   }
 
+  // Phase-5 reconciliation: regenerate is planned over the EXISTING
+  // document array when any slide has been manually edited, not over the
+  // script — so manual work (including duplicated slides that pushed the
+  // count past the script's) is structurally incapable of being dropped.
+  //
+  // Invariant this leans on (enforced by the editor since PR #75): any
+  // document whose position changed — moved, or shifted by an insert —
+  // was marked manuallyEdited at that moment. So a manuallyEdited:false
+  // document is still sitting at its original compile position, and its
+  // generator source is the script slide at that same position; it
+  // recompiles/re-renders exactly as before. manuallyEdited documents are
+  // carried verbatim wherever they sit. Script slides beyond the document
+  // array (script grew via editing) append as fresh script-born slides.
+  // A script slide whose position now holds a manuallyEdited document is
+  // intentionally NOT rendered — the user replaced that position.
+  type RenderPlanEntry =
+    | { kind: 'script'; slide: Slide }
+    | { kind: 'document'; doc: SlideDocument }
+
+  const hasManualEdits = existingDocuments.some((d) => d.manuallyEdited)
+  const renderPlan: RenderPlanEntry[] = []
+  if (hasManualEdits) {
+    for (let i = 0; i < existingDocuments.length; i++) {
+      const doc = existingDocuments[i]
+      if (doc.manuallyEdited) renderPlan.push({ kind: 'document', doc })
+      else if (slides[i]) renderPlan.push({ kind: 'script', slide: slides[i] })
+      // else: unedited document whose script slide no longer exists
+      // (script shrank) — generator content went away and the user never
+      // touched it, so it drops with the script, same as before phase 3.
+    }
+    for (let i = existingDocuments.length; i < slides.length; i++) {
+      renderPlan.push({ kind: 'script', slide: slides[i] })
+    }
+  } else {
+    for (const slide of slides) renderPlan.push({ kind: 'script', slide })
+  }
+  const finalTotal = renderPlan.length
+
   try {
-    for (const slide of slides) {
+    for (let position = 0; position < renderPlan.length; position++) {
+      const entry = renderPlan[position]
+      const slideOrder = position + 1
+
+      if (entry.kind === 'document') {
+        console.log(
+          `designer: slide_order ${slideOrder} of post ${postId} is manuallyEdited — ` +
+            'carrying its document verbatim and rendering its PNG from it'
+        )
+        const png = await renderDocument(entry.doc)
+        if (!compileFailed) compiledDocuments.push(entry.doc)
+        const path = `${postId}/slide-${slideOrder}.png`
+        const { error: uploadErr } = await supabase.storage
+          .from('carousel-assets')
+          .upload(path, png, { contentType: 'image/png', upsert: true })
+        if (uploadErr) throw new Error(uploadErr.message)
+        const { data: publicUrl } = supabase.storage.from('carousel-assets').getPublicUrl(path)
+        renderedSlides.push({ index: slideOrder, url: `${publicUrl.publicUrl}?v=${cacheBustVersion}` })
+        continue
+      }
+
+      const slide = entry.slide
+      {
       // If the resolved density differs from the slide's own script
       // variant, that slide's body needs to come from the OTHER density's
       // rewritten script (matched by index) — a color/image override
@@ -526,20 +586,17 @@ export async function POST(request: Request) {
         const densitySlides = await getSlidesForDensity(slideDesign.textDensity)
         slideToRender = densitySlides.find((s) => s.index === slide.index) ?? slide
       }
-      renderedSlideContent.set(slide.index, slideToRender)
+      // Numbering follows the FINAL slide order (position among all
+      // rendered slides incl. duplicates), while override/density
+      // resolution above stays keyed to the script's own index. When no
+      // manual edits exist, slideOrder === slide.index and this is a
+      // no-op.
+      const slideForRender = { ...slideToRender, index: slideOrder }
+      renderedSlideContent.set(slideOrder, slideForRender)
 
-      // Export-gap fix: a manuallyEdited slide's PNG must come from its
-      // (preserved) document — the canvas edits live there, not in
-      // script/slide_overrides — via the parity-proven renderDocument().
-      // Untouched slides keep the legacy renderSlide() path unchanged.
-      const preservedDoc = existingDocuments[slide.index - 1]
-      const isPreserved = !!preservedDoc?.manuallyEdited
-
-      const png = isPreserved
-        ? await renderDocument(preservedDoc)
-        : await renderSlide(
-        slideToRender,
-        total,
+      const png = await renderSlide(
+        slideForRender,
+        finalTotal,
         slideColors,
         fontConfig,
         fonts,
@@ -566,19 +623,12 @@ export async function POST(request: Request) {
       )
 
       if (!compileFailed) {
-        if (isPreserved) {
-          console.log(
-            `designer: slide ${slide.index} of post ${postId} is manuallyEdited — ` +
-              'keeping its document AND rendering its PNG from it (renderDocument)'
-          )
-          compiledDocuments.push(preservedDoc)
-        } else
         try {
           const doc = await compileTemplate(
             slideDesign.layoutTemplate,
             {
-              slide: slideToRender,
-              total,
+              slide: slideForRender,
+              total: finalTotal,
               colors: slideColors,
               fontConfig,
               textDensity: slideDesign.textDensity,
@@ -610,7 +660,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const path = `${postId}/slide-${slide.index}.png`
+      const path = `${postId}/slide-${slideOrder}.png`
 
       const { error: uploadErr } = await supabase.storage
         .from('carousel-assets')
@@ -625,9 +675,10 @@ export async function POST(request: Request) {
         .getPublicUrl(path)
 
       renderedSlides.push({
-        index: slide.index,
+        index: slideOrder,
         url: `${publicUrl.publicUrl}?v=${cacheBustVersion}`,
       })
+      }
     }
   } catch (err) {
     console.error('designer: render/upload error', err)
@@ -655,7 +706,7 @@ export async function POST(request: Request) {
         const match = f.name.match(/^slide-(\d+)\.png$/)
         return match ? { name: f.name, index: Number(match[1]) } : null
       })
-      .filter((f): f is { name: string; index: number } => f !== null && f.index > total)
+      .filter((f): f is { name: string; index: number } => f !== null && f.index > finalTotal)
       .map((f) => `${postId}/${f.name}`)
 
     if (orphanedPaths.length > 0) {
@@ -674,18 +725,26 @@ export async function POST(request: Request) {
     .schema('carousel')
     .from('slides')
     .insert(
-      slides.map((slide) => {
-        // Falls back to the default-density slide if somehow missing from
-        // the map (shouldn't happen — every slide in `slides` is rendered
-        // in the loop above) rather than risking a crash over copy_text
-        // slightly disagreeing with the image for an edge case that
-        // should be unreachable.
-        const rendered = renderedSlideContent.get(slide.index) ?? slide
+      renderPlan.map((entry, position) => {
+        const slideOrder = position + 1
+        // Document-born rows cache the document's own text nodes as
+        // copy_text (same rule the autosave route uses); script-born rows
+        // cache whatever density variant actually got rendered.
+        const copyText =
+          entry.kind === 'document'
+            ? entry.doc.nodes
+                .filter((n): n is Extract<(typeof entry.doc.nodes)[number], { type: 'text' }> => n.type === 'text')
+                .map((n) => n.text)
+                .join('\n\n')
+            : (() => {
+                const rendered = renderedSlideContent.get(slideOrder) ?? entry.slide
+                return `${rendered.headline}\n\n${rendered.body}`
+              })()
         return {
           post_id: postId,
-          slide_order: slide.index,
-          copy_text: `${rendered.headline}\n\n${rendered.body}`,
-          rendered_image_url: renderedSlides.find((r) => r.index === slide.index)?.url ?? null,
+          slide_order: slideOrder,
+          copy_text: copyText,
+          rendered_image_url: renderedSlides.find((r) => r.index === slideOrder)?.url ?? null,
         }
       })
     )
