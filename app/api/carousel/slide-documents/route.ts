@@ -77,24 +77,23 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // Export-gap fix: the PNGs Download All / per-slide download serve
-  // come from storage (slide-N.png) + the carousel.slides cache — if
-  // they kept the pre-edit render, the editor would "save" changes the
-  // user can never download. Re-render every manuallyEdited document
-  // whose JSON actually changed in this save (position-matched against
-  // the previous column value; debounced saves mean usually exactly one
-  // slide), upsert the same storage path, and refresh the cache row with
-  // a new cache-bust param — the same staleness mechanics the designer
-  // route already handles this way.
+  // Export-gap fix (+ reorder/duplicate support): the PNGs Download All /
+  // per-slide download serve come from storage (slide-N.png) + the
+  // carousel.slides cache. Re-render every POSITION whose document JSON
+  // changed in this save — not just manuallyEdited docs: a reorder or
+  // duplicate moves an untouched document to a new position, and that
+  // position's PNG must now show it (rendering an untouched document
+  // through renderDocument() is safe — that's exactly what the phase-2
+  // parity suite proves). Debounced saves mean usually one or two
+  // positions. Same cache-bust staleness mechanics as the designer route.
   const previous: SlideDocument[] = isSlideDocumentArray(post.slide_documents)
     ? post.slide_documents
     : []
   const cacheBustVersion = Date.now()
-  const rerendered: { slideOrder: number; url: string }[] = []
+  const rerendered: { slideOrder: number; url: string; copyText: string }[] = []
 
   for (let i = 0; i < body.slide_documents.length; i++) {
     const doc = body.slide_documents[i]
-    if (!doc.manuallyEdited) continue
     if (previous[i] && JSON.stringify(previous[i]) === JSON.stringify(doc)) continue
     try {
       const png = await renderDocument(doc)
@@ -104,7 +103,17 @@ export async function PATCH(req: Request) {
         .upload(path, png, { contentType: 'image/png', upsert: true })
       if (uploadErr) throw new Error(uploadErr.message)
       const { data: publicUrl } = supabase.storage.from('carousel-assets').getPublicUrl(path)
-      rerendered.push({ slideOrder: i + 1, url: `${publicUrl.publicUrl}?v=${cacheBustVersion}` })
+      rerendered.push({
+        slideOrder: i + 1,
+        url: `${publicUrl.publicUrl}?v=${cacheBustVersion}`,
+        // Cache copy_text from the document's own text nodes — after a
+        // canvas edit these ARE the slide's words; keeps the cache row
+        // consistent with the PNG it points at.
+        copyText: doc.nodes
+          .filter((n): n is Extract<typeof n, { type: 'text' }> => n.type === 'text')
+          .map((n) => n.text)
+          .join('\n\n'),
+      })
     } catch (err) {
       // The document save above already succeeded — a PNG refresh
       // failure must not roll that back or fail the autosave; the next
@@ -118,16 +127,31 @@ export async function PATCH(req: Request) {
     }
   }
 
+  // Update-or-insert per position: duplicating a slide creates positions
+  // beyond the rows the designer route originally inserted.
+  const { data: existingRows } = await supabase
+    .schema('carousel')
+    .from('slides')
+    .select('slide_order')
+    .eq('post_id', body.post_id)
+  const existingOrders = new Set((existingRows ?? []).map((r) => r.slide_order))
+
   for (const r of rerendered) {
-    const { error: cacheErr } = await supabase
-      .schema('carousel')
-      .from('slides')
-      .update({ rendered_image_url: r.url })
-      .eq('post_id', body.post_id)
-      .eq('slide_order', r.slideOrder)
+    const row = { rendered_image_url: r.url, copy_text: r.copyText }
+    const { error: cacheErr } = existingOrders.has(r.slideOrder)
+      ? await supabase
+          .schema('carousel')
+          .from('slides')
+          .update(row)
+          .eq('post_id', body.post_id)
+          .eq('slide_order', r.slideOrder)
+      : await supabase
+          .schema('carousel')
+          .from('slides')
+          .insert({ post_id: body.post_id, slide_order: r.slideOrder, ...row })
     if (cacheErr) {
       console.error(
-        `slide-documents: cache row update failed for post ${body.post_id} slide ${r.slideOrder}`,
+        `slide-documents: cache row upsert failed for post ${body.post_id} slide ${r.slideOrder}`,
         cacheErr
       )
     }
