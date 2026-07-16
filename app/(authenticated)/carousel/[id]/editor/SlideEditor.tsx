@@ -11,6 +11,7 @@ import SlideCanvas from './SlideCanvas'
 import EditorOverlay, { NodeGeometry } from './EditorOverlay'
 import TextEditLayer from './TextEditLayer'
 import PropertiesPanel from './PropertiesPanel'
+import SlidePropertiesPanel from './SlidePropertiesPanel'
 
 const CANVAS_DISPLAY_WIDTH = 540 // half document scale — crisp but compact
 
@@ -486,11 +487,17 @@ export default function SlideEditor({ postId, documents: initialDocuments }: Pro
           </span>
         </div>
       </div>
-      {selectedNode && (
+      {selectedNode ? (
         <PropertiesPanel
           node={selectedNode}
           canvasBackground={active.canvas.background}
           onUpdateNode={handleNodePropsChange}
+          onCommit={commitEditUnit}
+        />
+      ) : (
+        <SlidePropertiesPanel
+          document={active}
+          onMutateDocument={mutateActiveDocument}
           onCommit={commitEditUnit}
         />
       )}
