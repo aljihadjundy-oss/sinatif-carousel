@@ -7,6 +7,7 @@ import { IconName } from '@/lib/icons'
 import DownloadAllButton from './DownloadAllButton'
 import EditableScript from './EditableScript'
 import { SlideOverride } from '@/lib/slideDesign'
+import { isSlideDocumentArray } from '@/lib/slideDocument'
 
 interface Slide {
   index: number
@@ -36,7 +37,7 @@ export default async function CarouselPostPage({
     .schema('carousel')
     .from('posts')
     .select(
-      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides, brand_profiles(name, visual_style)'
+      'id, topic, status, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides, slide_documents, brand_profiles(name, visual_style)'
     )
     .eq('id', id)
     .single()
@@ -67,6 +68,8 @@ export default async function CarouselPostPage({
   const script = (scriptStage?.output_json ?? null) as Script | null
   const slides = (renderedSlides ?? []) as RenderedSlide[]
   const hasDesign = slides.some((s) => s.rendered_image_url)
+  const slideDocuments = isSlideDocumentArray(post.slide_documents) ? post.slide_documents : []
+  const manuallyEditedCount = slideDocuments.filter((d) => d.manuallyEdited).length
 
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-6">
@@ -136,6 +139,8 @@ export default async function CarouselPostPage({
           renderedSlides={slides
             .filter((s) => s.rendered_image_url)
             .map((s) => ({ index: s.slide_order, url: s.rendered_image_url! }))}
+          hasSlideDocuments={slideDocuments.length > 0}
+          manuallyEditedCount={manuallyEditedCount}
         />
       </div>
 
