@@ -187,6 +187,17 @@ export default function RegenerateDesignButton({
       return
     }
 
+    // Bug fix: the route can return 200 (PNGs all rendered) while still
+    // reporting that one or more slides failed to compile into an
+    // editable SlideDocument — surface that instead of letting it
+    // vanish into a server-only console.error (previously this whole
+    // regenerate's slide_documents update was silently skipped with no
+    // client-visible signal at all).
+    const json = await res.json().catch(() => ({}))
+    if (json.slide_documents_warning) {
+      setError(json.slide_documents_warning)
+    }
+
     setLoading(false)
     router.refresh()
   }

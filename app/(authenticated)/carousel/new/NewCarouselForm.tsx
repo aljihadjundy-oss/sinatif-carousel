@@ -147,7 +147,19 @@ export default function NewCarouselForm({ profiles }: Props) {
 
     // Generate = enter the canvas. The editor is the primary surface;
     // the post page remains as an archive/download fallback.
-    router.push(`/carousel/${scriptedPostId}/editor`)
+    //
+    // Bug fix: the designer route can succeed (PNGs rendered fine) while
+    // still failing to compile one or more slides into an editable
+    // SlideDocument — it now reports that as slide_documents_warning
+    // instead of only a server console.error. Forward it to the editor
+    // via a query param so the user actually sees why a slide might be
+    // missing from the canvas, instead of the editor silently rendering
+    // fewer slides (or none) with no explanation.
+    const designJson = await designRes.json().catch(() => ({}))
+    const editorUrl = designJson.slide_documents_warning
+      ? `/carousel/${scriptedPostId}/editor?warning=${encodeURIComponent(designJson.slide_documents_warning)}`
+      : `/carousel/${scriptedPostId}/editor`
+    router.push(editorUrl)
   }
 
   async function handleAiSubmit() {

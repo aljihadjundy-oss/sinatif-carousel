@@ -7,10 +7,20 @@ import './editor-fonts.css'
 
 export default async function SlideEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ warning?: string }>
 }) {
   const { id } = await params
+  // Bug fix: /api/carousel/designer can return 200 (PNGs all rendered)
+  // while still failing to compile one or more slides into an editable
+  // SlideDocument. NewCarouselForm forwards that as ?warning=... on the
+  // redirect straight into this page instead of it vanishing into a
+  // server console.error — so "kenapa slide-nya nggak semua ada" has an
+  // answer right here instead of just an unexplained empty/partial
+  // canvas.
+  const { warning } = await searchParams
   const supabase = await createServerSupabaseClient()
 
   const { data: post } = await supabase
@@ -40,6 +50,12 @@ export default async function SlideEditorPage({
           ← Kembali ke post
         </Link>
       </div>
+
+      {warning && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          {warning}
+        </p>
+      )}
 
       {documents.length === 0 ? (
         <p className="text-sm text-gray-600 dark:text-gray-400">

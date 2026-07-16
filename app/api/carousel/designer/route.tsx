@@ -28,9 +28,12 @@ import {
 import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
 import { renderDocument } from '@/lib/render-document'
 import {
+  SlideCompileResult,
   SlideDocument,
+  allDocumentsResolved,
   getSlideDocumentContentError,
   isSlideDocumentArray,
+  resolveDocumentSlot,
 } from '@/lib/slideDocument'
 
 export const runtime = 'nodejs'
@@ -484,11 +487,31 @@ export async function POST(request: Request) {
   // compiled to a SlideDocument (same resolved design inputs) and the
   // whole array persisted to posts.slide_documents. Parallel transition,
   // not a replacement: the PNGs users see still come from renderSlide();
-  // the documents exist for the phase-3 editor to open. Compilation
-  // failure therefore must not fail the route — it logs, skips the
-  // column update, and leaves the previous documents in place.
-  const compiledDocuments: SlideDocument[] = []
-  let compileFailed = false
+  // the documents exist for the editor to open. Compilation failure
+  // therefore must not fail the route.
+  //
+  // Bug fix (per-slide isolation): this used to be a single flat array +
+  // a `compileFailed` flag that, the moment ANY one slide's compile
+  // threw, skipped the posts.slide_documents UPDATE FOR THE WHOLE POST —
+  // so one bad slide (any layout, any cause) silently discarded EVERY
+  // other slide's successfully compiled document too, leaving the user
+  // looking at "belum punya dokumen slide" for a post whose PNGs had all
+  // rendered fine. Now indexed by final slide position (array length ==
+  // renderPlan.length, filled below) so one slide's failure can't take
+  // out its siblings:
+  //  - success -> that slide's freshly compiled document
+  //  - failure with a prior document already at that position (a
+  //    regenerate) -> fall back to the existing document there rather
+  //    than losing it
+  //  - failure with nothing to fall back to (typically a slide's first
+  //    ever generate) -> left null; surfaced to the caller via
+  //    `slide_documents_warning` in the response instead of vanishing
+  //    into a server-only console.error, and the whole column update is
+  //    skipped ONLY in that case (a null in the middle of the array
+  //    would desync every position after it from slide_order elsewhere —
+  //    slide-N.png, the slides cache, the autosave route).
+  const compiledDocuments: (SlideDocument | null)[] = []
+  const failedSlideOrders: number[] = []
   // Regenerate-vs-manual-edit policy (AUDIT.md risk R3, agreed product
   // decision): a slide the user touched in the canvas editor
   // (manuallyEdited: true, set by phase 3) is NOT recompiled — its
@@ -549,6 +572,8 @@ export async function POST(request: Request) {
     for (const slide of slides) renderPlan.push({ kind: 'script', slide })
   }
   const finalTotal = renderPlan.length
+  compiledDocuments.length = finalTotal
+  compiledDocuments.fill(null)
 
   try {
     for (let position = 0; position < renderPlan.length; position++) {
@@ -561,7 +586,7 @@ export async function POST(request: Request) {
             'carrying its document verbatim and rendering its PNG from it'
         )
         const png = await renderDocument(entry.doc)
-        if (!compileFailed) compiledDocuments.push(entry.doc)
+        compiledDocuments[position] = entry.doc
         const path = `${postId}/slide-${slideOrder}.png`
         const { error: uploadErr } = await supabase.storage
           .from('carousel-assets')
@@ -628,42 +653,54 @@ export async function POST(request: Request) {
         rawOverride?.customColors?.iconColor ?? null
       )
 
-      if (!compileFailed) {
-        try {
-          const doc = await compileTemplate(
-            slideDesign.layoutTemplate,
-            {
-              slide: slideForRender,
-              total: finalTotal,
-              colors: slideColors,
-              fontConfig,
-              textDensity: slideDesign.textDensity,
-              hierarchy,
-              logoUrl,
-              brandName,
-              backgroundImageUrl: slideDesign.backgroundImageUrl,
-              iconChoice,
-              iconColor: rawOverride?.customColors?.iconColor ?? null,
-            },
-            await getLegacyFontSet(slideDesign.layoutTemplate)
-          )
-          // Write-boundary validation (the gap PR #62 flagged): icon
-          // names against ICON_NAMES, every color against the hex/rgba
-          // format — defense in depth even though this document came
-          // from our own compiler, and the same check the phase-3
-          // editor's write path must run against genuinely untrusted
-          // input.
-          const contentError = getSlideDocumentContentError(doc, VALID_DOCUMENT_ICON_NAMES)
-          if (contentError) throw new Error(contentError)
-          compiledDocuments.push(doc)
-        } catch (err) {
-          console.error(
-            `designer: SlideDocument compile failed for post ${postId} slide ${slide.index} — ` +
-              'skipping slide_documents update for this generation (PNG render unaffected)',
-            err
-          )
-          compileFailed = true
-        }
+      let compileResult: SlideCompileResult
+      try {
+        const doc = await compileTemplate(
+          slideDesign.layoutTemplate,
+          {
+            slide: slideForRender,
+            total: finalTotal,
+            colors: slideColors,
+            fontConfig,
+            textDensity: slideDesign.textDensity,
+            hierarchy,
+            logoUrl,
+            brandName,
+            backgroundImageUrl: slideDesign.backgroundImageUrl,
+            iconChoice,
+            iconColor: rawOverride?.customColors?.iconColor ?? null,
+          },
+          await getLegacyFontSet(slideDesign.layoutTemplate)
+        )
+        // Write-boundary validation (the gap PR #62 flagged): icon
+        // names against VALID_DOCUMENT_ICON_NAMES, every color against
+        // the hex/rgba format — defense in depth even though this
+        // document came from our own compiler, and the same check the
+        // editor's write path must run against genuinely untrusted
+        // input.
+        const contentError = getSlideDocumentContentError(doc, VALID_DOCUMENT_ICON_NAMES)
+        compileResult = contentError ? { ok: false, error: new Error(contentError) } : { ok: true, doc }
+      } catch (error) {
+        compileResult = { ok: false, error }
+      }
+
+      // Isolated to THIS slide (bug fix — see the compiledDocuments
+      // comment above): a failure falls back to whatever document
+      // already occupied this exact position, if a prior generate
+      // produced one, instead of taking every other slide's fresh
+      // compile down with it.
+      const slot = resolveDocumentSlot(position, compileResult, existingDocuments)
+      compiledDocuments[position] = slot.doc
+      if (!compileResult.ok) {
+        if (slot.failed) failedSlideOrders.push(slideOrder)
+        console.error(
+          `designer: SlideDocument compile failed for post ${postId} slide_order ${slideOrder} ` +
+            `(script index ${slide.index}, layout ${slideDesign.layoutTemplate}) — ` +
+            (slot.failed
+              ? 'no existing document to fall back to; will be reported to the caller'
+              : "falling back to this position's existing document"),
+          compileResult.error
+        )
       }
 
       const path = `${postId}/slide-${slideOrder}.png`
@@ -772,6 +809,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: stageErr.message }, { status: 500 })
   }
 
+  // Positions stay index-aligned with slide_order everywhere else
+  // (slide-N.png, the slides cache, the autosave route), so a null in
+  // the middle of the array can't be safely persisted — only write
+  // slide_documents when every position resolved to SOME document
+  // (freshly compiled or a same-position fallback). Per-slide isolation
+  // (see the compiledDocuments comment above) means this now only skips
+  // the column update in the genuinely rare case a slide fails to
+  // compile on ITS OWN FIRST generate with no prior document to fall
+  // back to — not, as before the fix, whenever any one slide anywhere
+  // in the post hit a compile error.
+  const allPositionsResolved = allDocumentsResolved(compiledDocuments)
+
   await supabase
     .schema('carousel')
     .from('posts')
@@ -785,13 +834,8 @@ export async function POST(request: Request) {
       icon_name: iconChoice,
       typography_preset: typographyPreset,
       slide_overrides: slideOverrides,
-      // Compiled node-tree per slide (phase 2c). Every regenerate
-      // rewrites the whole array — safe today because documents are
-      // pure generator output (manuallyEdited is always false until the
-      // phase-3 editor exists; the regenerate-vs-manual-edit policy,
-      // AUDIT.md risk R3, lands with that editor). On compile failure
-      // the previous documents are deliberately left untouched.
-      ...(compileFailed ? {} : { slide_documents: compiledDocuments }),
+      // Compiled node-tree per slide (phase 2c).
+      ...(allPositionsResolved ? { slide_documents: compiledDocuments } : {}),
     })
     .eq('id', postId)
 
@@ -805,5 +849,17 @@ export async function POST(request: Request) {
     background_image_url: backgroundImageUrl,
     typography_preset: typographyPreset,
     slide_overrides: slideOverrides,
+    // Bug fix: previously a compile failure was only ever a
+    // server-side console.error — the PNGs still succeeded so the
+    // route returned 200 and the caller (about to redirect straight
+    // into the canvas editor) had no way to know slide_documents
+    // hadn't been written. Surfaced here so the UI can show something
+    // instead of the editor just silently claiming "belum punya
+    // dokumen slide".
+    ...(failedSlideOrders.length > 0
+      ? {
+          slide_documents_warning: `Slide ${failedSlideOrders.join(', ')} gagal disiapkan untuk mode edit kanvas (gambar tetap berhasil dibuat) — coba klik Regenerate Design lagi.`,
+        }
+      : {}),
   })
 }

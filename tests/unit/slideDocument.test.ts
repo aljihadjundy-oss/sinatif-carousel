@@ -249,3 +249,72 @@ describe('duplicateSlideDocument deep independence', () => {
     expect((original.canvas.background as { stops: { color: string }[] }).stops[0].color).toBe('#000000')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Per-slide compile isolation (bug fix): resolveDocumentSlot /
+// allDocumentsResolved are what the designer route now calls per slide
+// position instead of a single whole-post `compileFailed` flag that used
+// to discard EVERY slide's document the moment any one slide's compile
+// threw. These tests exercise the exact contract the route depends on.
+
+import { allDocumentsResolved, resolveDocumentSlot } from '@/lib/slideDocument'
+
+describe('resolveDocumentSlot', () => {
+  it('uses the fresh document on success, regardless of what existed before', () => {
+    const fresh = createSlideDocument()
+    const existing = createSlideDocument()
+    const slot = resolveDocumentSlot(0, { ok: true, doc: fresh }, [existing])
+    expect(slot.doc).toBe(fresh)
+    expect(slot.failed).toBe(false)
+  })
+
+  it('falls back to the existing document at the SAME position on failure', () => {
+    const existing0 = createSlideDocument()
+    const existing1 = createSlideDocument()
+    const slot = resolveDocumentSlot(1, { ok: false, error: new Error('boom') }, [
+      existing0,
+      existing1,
+    ])
+    expect(slot.doc).toBe(existing1)
+    expect(slot.failed).toBe(false)
+  })
+
+  it('does NOT fall back to a different position\'s document', () => {
+    const existing0 = createSlideDocument()
+    // position 1 has nothing (array too short) — must not silently reuse
+    // position 0's document.
+    const slot = resolveDocumentSlot(1, { ok: false, error: new Error('boom') }, [existing0])
+    expect(slot.doc).toBeNull()
+    expect(slot.failed).toBe(true)
+  })
+
+  it('reports failed:true only when there is truly nothing to fall back to', () => {
+    const slot = resolveDocumentSlot(0, { ok: false, error: new Error('boom') }, [null])
+    expect(slot.doc).toBeNull()
+    expect(slot.failed).toBe(true)
+  })
+})
+
+describe('allDocumentsResolved', () => {
+  it('is true when every position has a document', () => {
+    const docs = [createSlideDocument(), createSlideDocument(), createSlideDocument()]
+    expect(allDocumentsResolved(docs)).toBe(true)
+  })
+
+  it('is false when even one position is null — the bug this fixes is scoped to', () => {
+    // This is the crux of the fix: 2 out of 3 slides compiled fine, but
+    // persisting a JSONB array with a hole at position 1 would desync
+    // every position after it from slide_order (slide-N.png, the slides
+    // cache) elsewhere in the app — so the WRITE still has to wait for
+    // every position, even though a single failure no longer had to
+    // wipe out the other two slides' already-compiled documents (the
+    // caller keeps them in memory / can retry) the way the old
+    // single-flag design did.
+    const docs = [createSlideDocument(), null, createSlideDocument()]
+    expect(allDocumentsResolved(docs)).toBe(false)
+  })
+
+  it('is true for an empty array (vacuously)', () => {
+    expect(allDocumentsResolved([])).toBe(true)
+  })
+})

@@ -372,3 +372,61 @@ export function isSlideDocumentArray(v: unknown): v is SlideDocument[] {
   const ids = v.map((d) => d.id)
   return new Set(ids).size === ids.length
 }
+
+// ---------------------------------------------------------------------------
+// Per-slide compile isolation (bug fix, Jul 2026)
+//
+// The designer route compiles a fresh SlideDocument per slide alongside
+// the (separate, always-succeeds-or-502s) legacy PNG render. Originally
+// a single failed compile — ANY slide, ANY layout, ANY cause — flipped
+// one whole-post `compileFailed` flag that skipped the
+// posts.slide_documents UPDATE ENTIRELY, discarding every other slide's
+// successfully compiled document too. A post whose PNGs all rendered
+// fine could land in the editor with zero documents and no visible
+// explanation ("belum punya dokumen slide") — this is the direct cause
+// of that report.
+//
+// These two pure helpers are what the route now calls per slide
+// position instead of the old single boolean, so one bad slide is
+// isolated to itself:
+//  - resolveDocumentSlot(): a failed compile falls back to whatever
+//    document already occupied THAT SAME POSITION (a regenerate has
+//    one; a slide's first-ever generate doesn't) instead of taking
+//    every other position down with it.
+//  - allDocumentsResolved(): the final array can only ever be persisted
+//    once every position holds SOME document — a null in the middle
+//    would desync every position after it from slide_order everywhere
+//    else this app keys off it (slide-N.png, the slides cache, the
+//    autosave route) — so this is still an all-or-nothing WRITE, but
+//    the thing that has to succeed for every position is now "compiled
+//    OR had something to fall back to", not "compiled with zero
+//    failures anywhere in the whole post".
+
+export type SlideCompileResult =
+  | { ok: true; doc: SlideDocument }
+  | { ok: false; error: unknown }
+
+export interface DocumentSlot {
+  doc: SlideDocument | null
+  // true only when the compile failed AND there was nothing at this
+  // position to fall back to — the case that actually needs reporting
+  // to the caller, as distinct from a failure that quietly self-healed
+  // via the fallback.
+  failed: boolean
+}
+
+export function resolveDocumentSlot(
+  position: number,
+  result: SlideCompileResult,
+  existingDocuments: readonly (SlideDocument | null | undefined)[]
+): DocumentSlot {
+  if (result.ok) return { doc: result.doc, failed: false }
+  const fallback = existingDocuments[position] ?? null
+  return { doc: fallback, failed: fallback === null }
+}
+
+export function allDocumentsResolved(
+  docs: readonly (SlideDocument | null)[]
+): docs is SlideDocument[] {
+  return docs.every((d) => d !== null)
+}
