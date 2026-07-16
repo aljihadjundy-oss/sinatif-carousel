@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import DeletePostButton from './DeletePostButton'
 
 interface RecentPost {
   id: string
@@ -111,26 +112,31 @@ export default async function DashboardPage() {
         ) : (
           <div className="bg-white rounded-xl shadow divide-y dark:bg-gray-900 dark:divide-gray-800">
             {recentPosts.map((post) => (
-              <Link
+              <div
                 key={post.id}
-                href={`/carousel/${post.id}`}
                 className="flex items-center justify-between gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/60"
               >
-                <div className="min-w-0">
-                  <p className="font-medium truncate text-gray-900 dark:text-gray-100">
-                    {post.topic}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-0.5 dark:text-gray-400">
-                    {post.brand_profiles?.name ?? 'No brand'} ·{' '}
-                    {formatDate(post.created_at)}
-                  </p>
-                </div>
-                <span
-                  className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${statusBadge(post.status)}`}
+                <Link
+                  href={`/carousel/${post.id}`}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-4"
                 >
-                  {post.status}
-                </span>
-              </Link>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate text-gray-900 dark:text-gray-100">
+                      {post.topic}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-0.5 dark:text-gray-400">
+                      {post.brand_profiles?.name ?? 'No brand'} ·{' '}
+                      {formatDate(post.created_at)}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${statusBadge(post.status)}`}
+                  >
+                    {post.status}
+                  </span>
+                </Link>
+                <DeletePostButton postId={post.id} topic={post.topic} />
+              </div>
             ))}
           </div>
         )}
