@@ -4,13 +4,13 @@
 // color for the selected node. Contrast checks reuse lib/contrast.ts
 // and are advisory-only (warn, never block) — the same deliberate-user-
 // choice policy the per-slide color wheel established in PR #55-59.
-import React from 'react'
+import React, { useRef } from 'react'
 import { FONT_CATALOG } from '@/lib/font-catalog'
 import {
   getManualColorContrastWarning,
   getManualShapeContrastWarning,
 } from '@/lib/contrast'
-import { Fill, IconNode, ShapeNode, SlideNode, TextNode } from '@/lib/slideDocument'
+import { Fill, IconNode, ImageNode, ShapeNode, SlideNode, TextNode } from '@/lib/slideDocument'
 
 const FONT_WEIGHT_LABELS: Record<number, string> = {
   400: 'Regular (400)',
@@ -39,16 +39,26 @@ interface Props {
   canvasBackground: Fill
   onUpdateNode: (
     nodeId: string,
-    partial: Partial<TextNode> | Partial<ShapeNode> | Partial<IconNode>
+    partial: Partial<TextNode> | Partial<ShapeNode> | Partial<IconNode> | Partial<ImageNode>
   ) => void
   // Ends the current edit unit (history entry + autosave flush follows
   // via the normal debounce) — called on blur so a color-picker drag or
   // size spinner session is one undo step, not dozens.
   onCommit: () => void
+  onReplaceImage?: (nodeId: string, file: File) => void
+  uploadingPhoto?: boolean
 }
 
-export default function PropertiesPanel({ node, canvasBackground, onUpdateNode, onCommit }: Props) {
+export default function PropertiesPanel({
+  node,
+  canvasBackground,
+  onUpdateNode,
+  onCommit,
+  onReplaceImage,
+  uploadingPhoto = false,
+}: Props) {
   const bgSolid = canvasBackground.type === 'solid' ? canvasBackground.color : null
+  const replaceInputRef = useRef<HTMLInputElement>(null)
 
   if (node.type === 'image') {
     return (
@@ -56,10 +66,45 @@ export default function PropertiesPanel({ node, canvasBackground, onUpdateNode, 
         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           Properti Gambar
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Geser/ubah ukuran langsung di kanvas. Mengganti sumber gambar belum tersedia di
-          fase ini.
-        </p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={node.src} alt="" className="w-full rounded border border-gray-200 dark:border-gray-800" />
+        {onReplaceImage && (
+          <>
+            <input
+              ref={replaceInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) onReplaceImage(node.id, file)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => replaceInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="w-full rounded border border-gray-300 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              {uploadingPhoto ? 'Mengunggah…' : 'Ganti foto'}
+            </button>
+          </>
+        )}
+        <label className="block">
+          <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">Mode isi</span>
+          <select
+            value={node.fit}
+            onChange={(e) => {
+              onUpdateNode(node.id, { fit: e.target.value as 'cover' | 'contain' })
+              onCommit()
+            }}
+            className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+          >
+            <option value="cover">Cover (crop mengisi)</option>
+            <option value="contain">Contain (utuh)</option>
+          </select>
+        </label>
       </div>
     )
   }

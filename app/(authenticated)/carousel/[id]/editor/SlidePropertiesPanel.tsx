@@ -13,7 +13,7 @@
 // body pair; hierarchy scales the largest text node's size. Applying to
 // slide 2 never touches slide 1 — same per-slide independence rule as
 // everything else in the editor.
-import React from 'react'
+import React, { useRef } from 'react'
 import { TYPOGRAPHY_PRESETS } from '@/lib/typography-presets'
 import { Fill, SlideDocument, SlideNode, TextNode } from '@/lib/slideDocument'
 
@@ -39,9 +39,18 @@ interface Props {
   // manuallyEdited + autosave + one undo entry via onCommit).
   onMutateDocument: (mutate: (doc: SlideDocument) => SlideDocument) => void
   onCommit: () => void
+  onUploadBackgroundPhoto?: (file: File) => void
+  uploadingPhoto?: boolean
 }
 
-export default function SlidePropertiesPanel({ document: doc, onMutateDocument, onCommit }: Props) {
+export default function SlidePropertiesPanel({
+  document: doc,
+  onMutateDocument,
+  onCommit,
+  onUploadBackgroundPhoto,
+  uploadingPhoto = false,
+}: Props) {
+  const bgPhotoInputRef = useRef<HTMLInputElement>(null)
   const bg = doc.canvas.background
 
   function setBackground(background: Fill) {
@@ -182,11 +191,28 @@ export default function SlidePropertiesPanel({ document: doc, onMutateDocument, 
           </div>
         )}
 
-        {bg.type === 'image' && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Background slide ini foto. Pilih Solid/Gradien di atas untuk menggantinya, atau
-            ganti fotonya lewat upload (menyusul di PR upload per-slide).
-          </p>
+        {onUploadBackgroundPhoto && (
+          <>
+            <input
+              ref={bgPhotoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) onUploadBackgroundPhoto(file)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => bgPhotoInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="mt-1.5 w-full rounded border border-gray-300 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              {uploadingPhoto ? 'Mengunggah…' : bg.type === 'image' ? 'Ganti foto background' : 'Upload foto background'}
+            </button>
+          </>
         )}
       </div>
 
