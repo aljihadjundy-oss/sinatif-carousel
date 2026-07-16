@@ -92,6 +92,10 @@ export interface TextNode extends BaseNode {
   // and freezing a guessed number would shift them vs the phase-0
   // baselines. Made optional during the phase-2 pilot for this reason.
   lineHeight?: number
+  // px. Several templates (terminal_dev meta rows, elegant_promo brand
+  // row, flat_mockup_card labels) set CSS letter-spacing; added in the
+  // phase-2 rollout when those templates were compiled.
+  letterSpacing?: number
 }
 
 export interface ShapeNode extends BaseNode {
@@ -241,7 +245,8 @@ export function isSlideNode(v: unknown): v is SlideNode {
         isFiniteNumber(n.fontSize) &&
         isNonEmptyString(n.color) &&
         (n.align === 'left' || n.align === 'center' || n.align === 'right') &&
-        (n.lineHeight === undefined || isFiniteNumber(n.lineHeight))
+        (n.lineHeight === undefined || isFiniteNumber(n.lineHeight)) &&
+        (n.letterSpacing === undefined || isFiniteNumber(n.letterSpacing))
       )
     case 'shape':
       return (

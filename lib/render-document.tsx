@@ -115,6 +115,7 @@ function renderTextNode(node: TextNode): React.ReactElement {
             ? { justifyContent: 'flex-end' }
             : {}),
         ...(node.lineHeight !== undefined ? { lineHeight: node.lineHeight } : {}),
+        ...(node.letterSpacing !== undefined ? { letterSpacing: node.letterSpacing } : {}),
       },
     },
     node.text
