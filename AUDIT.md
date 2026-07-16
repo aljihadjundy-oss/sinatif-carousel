@@ -155,7 +155,13 @@ Diurutkan dari yang paling menghambat:
 ### Fase yang disarankan
 
 > **Status (Jul 2026):** Fase 0 selesai (PR #61 — 30 baseline snapshot visual, vitest+pixelmatch).
-> Fase 1 selesai (PR ini — `slide_documents` JSONB + `lib/slideDocument.ts`). Fase 2+ menunggu approval owner.
+> Fase 1 selesai (PR #62 — `slide_documents` JSONB + `lib/slideDocument.ts`).
+> Fase 2 selesai: pilot `minimal` di paritas 0.00000% (PR #63), 8 template sisanya via probe rendering —
+> 27/30 kasus pixel-perfect, terminal_dev 0.011% & news_card ~0.0014% (residual AA sub-piksel,
+> threshold 0.02% tidak dilonggarkan) (PR #64), integrasi ke designer route + validasi write-boundary
+> (icon name + format warna) (PR fase 2c). Risk R1 terjawab: pengukuran teks & layout dilakukan lewat
+> engine produksi itu sendiri (lib/measure-text.ts, lib/template-probe.tsx), bukan re-implementasi.
+> Fase 3+ (editor UI) menunggu approval owner. Kebijakan R3 (regenerate vs manuallyEdited) dieksekusi di fase 3.
 
 | Fase | Isi | Perkiraan bobot relatif |
 |---|---|---|

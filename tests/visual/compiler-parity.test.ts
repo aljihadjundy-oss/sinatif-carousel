@@ -18,9 +18,10 @@ import {
   LayoutVariant,
   pickColors,
 } from '@/lib/slide-renderer'
+import { ICON_NAMES } from '@/lib/icons'
 import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
 import { renderDocument } from '@/lib/render-document'
-import { isSlideDocument } from '@/lib/slideDocument'
+import { getSlideDocumentContentError, isSlideDocument } from '@/lib/slideDocument'
 import { compareToBaseline } from './snapshot'
 
 // Inputs mirror templates.test.ts exactly — same slide content, palette,
@@ -113,6 +114,9 @@ describe('compiled templates match legacy renderer baselines', async () => {
     )
     expect(isSlideDocument(doc)).toBe(true)
     expect(doc.manuallyEdited).toBe(false)
+    // Compiler output must pass the same write-boundary validation the
+    // designer route applies before persisting slide_documents.
+    expect(getSlideDocumentContentError(doc, ICON_NAMES)).toBeNull()
 
     const png = await renderDocument(doc)
     const result = compareToBaseline(baselineName, png)
