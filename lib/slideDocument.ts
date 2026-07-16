@@ -164,12 +164,21 @@ export function createNodeId(): string {
 // Duplicate with fresh UUIDs for the slide AND every node — two slides
 // (or two nodes) must never share an id, or selection/undo in the editor
 // and any future per-node persistence would conflate them.
+//
+// DEEP clone, not spreads: a shallow `{...n}` leaves nested objects
+// (fill, stroke, gradient stops, canvas.background) shared BY REFERENCE
+// between the original and the copy. Today's editor mutates immutably so
+// that sharing never bled across slides in practice, but per-slide
+// independence is a hard product requirement (Canva-flow redesign) and
+// must not hinge on every future call site remembering to be immutable.
+// Documents are plain JSON by construction (validated at every write
+// boundary), so structuredClone is exact.
 export function duplicateSlideDocument(doc: SlideDocument): SlideDocument {
+  const clone = structuredClone(doc)
   return {
-    ...doc,
+    ...clone,
     id: crypto.randomUUID(),
-    canvas: { ...doc.canvas, background: doc.canvas.background },
-    nodes: doc.nodes.map((n) => ({ ...n, id: crypto.randomUUID() })),
+    nodes: clone.nodes.map((n) => ({ ...n, id: crypto.randomUUID() })),
   }
 }
 

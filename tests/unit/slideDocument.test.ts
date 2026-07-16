@@ -205,3 +205,47 @@ describe('getSlideDocumentContentError', () => {
     expect(getSlideDocumentContentError(badBg, ICONS)).toMatch(/invalid gradient stop color/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Per-slide independence (Canva-flow redesign): a duplicated slide must
+// share NOTHING by reference with its source — in-place mutation of one
+// (even through nested objects like fills/strokes/gradient stops) must
+// never bleed into the other.
+
+describe('duplicateSlideDocument deep independence', () => {
+  it('does not share nested fill/stroke/background objects by reference', () => {
+    const original = createSlideDocument({
+      type: 'linear-gradient',
+      angle: 180,
+      stops: [
+        { offset: 0, color: '#000000' },
+        { offset: 1, color: '#333333' },
+      ],
+    })
+    original.nodes.push({
+      id: crypto.randomUUID(),
+      type: 'shape',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      shape: 'rect',
+      fill: { type: 'solid', color: '#f97316' },
+      stroke: { color: '#ffffff', width: 2 },
+    })
+
+    const copy = duplicateSlideDocument(original)
+
+    // Mutate the COPY in place through every nested path...
+    const copyShape = copy.nodes[0] as Extract<(typeof copy.nodes)[number], { type: 'shape' }>
+    ;(copyShape.fill as { color: string }).color = '#ff0000'
+    copyShape.stroke!.color = '#00ff00'
+    ;(copy.canvas.background as { stops: { color: string }[] }).stops[0].color = '#ffffff'
+
+    // ...and the ORIGINAL must be untouched.
+    const origShape = original.nodes[0] as Extract<(typeof original.nodes)[number], { type: 'shape' }>
+    expect((origShape.fill as { color: string }).color).toBe('#f97316')
+    expect(origShape.stroke!.color).toBe('#ffffff')
+    expect((original.canvas.background as { stops: { color: string }[] }).stops[0].color).toBe('#000000')
+  })
+})
