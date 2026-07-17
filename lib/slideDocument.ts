@@ -52,9 +52,60 @@ export interface ImageFill {
   type: 'image'
   src: string // https URL or data: URI
   fit: 'cover' | 'contain'
+  // Background adjust (Canva-style pan/zoom of the crop): scale
+  // multiplies the fitted size (1 = as fitted; 2 = zoomed to 200%), and
+  // offsetX/offsetY shift the image in canvas px. All optional — omitted
+  // means the neutral value, keeping persisted JSONB minimal and every
+  // pre-existing document valid unchanged. Rendering MUST go through
+  // imageFillLayerStyle() below in both the editor canvas and the
+  // renderDocument() exporter so what the user sees while adjusting is
+  // exactly what exports.
+  scale?: number
+  offsetX?: number
+  offsetY?: number
 }
 
 export type Fill = SolidFill | LinearGradientFill | ImageFill
+
+// Single source of truth for how an image background lays out — shared
+// by the editor's SlideCanvas and renderDocument() so pan/zoom parity is
+// by construction, not by two hand-kept copies. Both render an <img>
+// stretched to the canvas with objectFit + a center-origin transform
+// (satori supports translate/scale transforms, and CSS backgrounds can't
+// express this at all — which is why the editor switched from
+// background-image CSS to a real <img> layer for image fills).
+export function imageFillLayerStyle(
+  fill: ImageFill,
+  canvas: { width: number; height: number }
+): {
+  position: 'absolute'
+  left: number
+  top: number
+  width: number
+  height: number
+  objectFit: 'cover' | 'contain'
+  transform?: string
+  transformOrigin?: string
+} {
+  const scale = fill.scale ?? 1
+  const offsetX = fill.offsetX ?? 0
+  const offsetY = fill.offsetY ?? 0
+  const neutral = scale === 1 && offsetX === 0 && offsetY === 0
+  return {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: canvas.width,
+    height: canvas.height,
+    objectFit: fill.fit,
+    ...(neutral
+      ? {}
+      : {
+          transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
+          transformOrigin: 'center',
+        }),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Nodes
@@ -219,7 +270,13 @@ function isFill(v: unknown): v is Fill {
         )
       )
     case 'image':
-      return isNonEmptyString(f.src) && (f.fit === 'cover' || f.fit === 'contain')
+      return (
+        isNonEmptyString(f.src) &&
+        (f.fit === 'cover' || f.fit === 'contain') &&
+        (f.scale === undefined || isFiniteNumber(f.scale)) &&
+        (f.offsetX === undefined || isFiniteNumber(f.offsetX)) &&
+        (f.offsetY === undefined || isFiniteNumber(f.offsetY))
+      )
     default:
       return false
   }

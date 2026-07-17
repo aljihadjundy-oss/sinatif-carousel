@@ -7,7 +7,7 @@
 // later phase-3 PRs sit on top of this same stage so their math can work
 // in document coordinates and ignore the display scale.
 import React from 'react'
-import { Fill, SlideDocument, SlideNode } from '@/lib/slideDocument'
+import { Fill, SlideDocument, SlideNode, imageFillLayerStyle } from '@/lib/slideDocument'
 import { LucideIcon } from '@/lib/icons'
 import { baseNodeCss, fillToCss, shapeNodeCss, textNodeCss } from './nodeStyles'
 
@@ -45,8 +45,13 @@ function CanvasNode({ node }: { node: SlideNode }) {
   }
 }
 
+// Image backgrounds render as a real <img> layer (see below), NOT as CSS
+// background-image: CSS backgrounds can't express the pan/zoom transform
+// (ImageFill scale/offsetX/offsetY), and the exporter already renders an
+// <img> — using the same element + the shared imageFillLayerStyle() makes
+// editor↔export parity structural instead of hand-matched.
 function canvasBackgroundCss(background: Fill): React.CSSProperties {
-  return fillToCss(background)
+  return background.type === 'image' ? {} : fillToCss(background)
 }
 
 interface Props {
@@ -82,6 +87,14 @@ export default function SlideCanvas({ document, displayWidth, hiddenNodeId = nul
           ...canvasBackgroundCss(document.canvas.background),
         }}
       >
+        {document.canvas.background.type === 'image' && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={document.canvas.background.src}
+            alt=""
+            style={imageFillLayerStyle(document.canvas.background, document.canvas)}
+          />
+        )}
         {document.nodes.map((node) =>
           node.id === hiddenNodeId ? null : <CanvasNode key={node.id} node={node} />
         )}
