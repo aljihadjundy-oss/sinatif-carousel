@@ -25,6 +25,7 @@ import {
   resolveSlideDesign,
 } from '@/lib/slideDesign'
 import { compileTemplate, loadLegacyFontSet } from '@/lib/template-compiler'
+import { buildFallbackDocument } from '@/lib/materialize-documents'
 import { renderDocument } from '@/lib/render-document'
 import {
   SlideCompileResult,
@@ -686,17 +687,30 @@ export async function POST(request: Request) {
       // Isolated to THIS slide (bug fix — see the compiledDocuments
       // comment above): a failure falls back to whatever document
       // already occupied this exact position, if a prior generate
-      // produced one, instead of taking every other slide's fresh
-      // compile down with it.
+      // produced one. When there's nothing there either (a slide's
+      // first-ever generate failing), it now gets a guaranteed-valid
+      // plain fallback document instead of leaving the position null —
+      // so slide_documents is ALWAYS written complete and the editor
+      // always has something editable to open (same guarantee the
+      // editor's lazy materialization provides on its side).
       const slot = resolveDocumentSlot(position, compileResult, existingDocuments)
-      compiledDocuments[position] = slot.doc
+      compiledDocuments[position] =
+        slot.doc ??
+        buildFallbackDocument({
+          headline: slideForRender.headline,
+          body: slideForRender.body,
+          bg: slideColors.bg,
+          fg: slideColors.fg,
+          headlineFamily: fontConfig.headlineFamily,
+          bodyFamily: fontConfig.bodyFamily,
+        })
       if (!compileResult.ok) {
         if (slot.failed) failedSlideOrders.push(slideOrder)
         console.error(
           `designer: SlideDocument compile failed for post ${postId} slide_order ${slideOrder} ` +
             `(script index ${slide.index}, layout ${slideDesign.layoutTemplate}) — ` +
             (slot.failed
-              ? 'no existing document to fall back to; will be reported to the caller'
+              ? 'no existing document to fall back to; using plain fallback document'
               : "falling back to this position's existing document"),
           compileResult.error
         )
@@ -808,19 +822,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: stageErr.message }, { status: 500 })
   }
 
-  // Positions stay index-aligned with slide_order everywhere else
-  // (slide-N.png, the slides cache, the autosave route), so a null in
-  // the middle of the array can't be safely persisted — only write
-  // slide_documents when every position resolved to SOME document
-  // (freshly compiled or a same-position fallback). Per-slide isolation
-  // (see the compiledDocuments comment above) means this now only skips
-  // the column update in the genuinely rare case a slide fails to
-  // compile on ITS OWN FIRST generate with no prior document to fall
-  // back to — not, as before the fix, whenever any one slide anywhere
-  // in the post hit a compile error.
-  const allPositionsResolved = allDocumentsResolved(compiledDocuments)
+  // Every position is guaranteed a document now (fresh compile,
+  // same-position carry-forward, or plain fallback) — this is a type
+  // narrowing plus a loud invariant check, no longer a write gate.
+  if (!allDocumentsResolved(compiledDocuments)) {
+    console.error(
+      `designer: INVARIANT VIOLATION for post ${postId} — compiledDocuments has a null slot even ` +
+        'after per-slide fallbacks; writing without slide_documents'
+    )
+  }
 
-  await supabase
+  const { error: postUpdateErr } = await supabase
     .schema('carousel')
     .from('posts')
     .update({
@@ -834,9 +846,26 @@ export async function POST(request: Request) {
       typography_preset: typographyPreset,
       slide_overrides: slideOverrides,
       // Compiled node-tree per slide (phase 2c).
-      ...(allPositionsResolved ? { slide_documents: compiledDocuments } : {}),
+      ...(allDocumentsResolved(compiledDocuments) ? { slide_documents: compiledDocuments } : {}),
     })
     .eq('id', postId)
+
+  // Root cause of the second "belum punya dokumen slide" report: this
+  // UPDATE's error was never read. When layout_variant was one of the
+  // four variants added to the code without a matching CHECK-constraint
+  // migration (terminal_dev/elegant_promo/news_card/photo_editorial —
+  // fixed by migration 0013), the whole statement failed — status,
+  // layout_variant AND slide_documents all silently unsaved — while the
+  // route returned 200 and redirected the user into an editor with
+  // nothing to open. Reproduced end-to-end in e2e/matrix.mjs before the
+  // fix. A failure here must be a failure the caller can see.
+  if (postUpdateErr) {
+    console.error(`designer: final posts update failed for post ${postId}:`, postUpdateErr.message)
+    return NextResponse.json(
+      { error: `Gagal menyimpan hasil desain: ${postUpdateErr.message}` },
+      { status: 500 }
+    )
+  }
 
   return NextResponse.json({
     post_id: postId,
@@ -857,7 +886,7 @@ export async function POST(request: Request) {
     // dokumen slide".
     ...(failedSlideOrders.length > 0
       ? {
-          slide_documents_warning: `Slide ${failedSlideOrders.join(', ')} gagal disiapkan untuk mode edit kanvas (gambar tetap berhasil dibuat) — coba klik Regenerate Design lagi.`,
+          slide_documents_warning: `Slide ${failedSlideOrders.join(', ')} dibuka dengan layout sederhana karena template aslinya gagal disiapkan — isinya tetap lengkap dan bisa diedit di kanvas.`,
         }
       : {}),
   })

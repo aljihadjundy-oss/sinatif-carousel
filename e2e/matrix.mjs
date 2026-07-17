@@ -25,8 +25,51 @@ const db = new pg.Pool({ host: '127.0.0.1', port: 55432, database: 'app', user: 
 const { browser, context } = await launch()
 const results = []
 
+// Path 4: "regenerate" — one post is created once (manual/minimal), then
+// each layout is applied via the post page's Regenerate Design panel.
+// editorial_gradient is imageOnly there (hidden while background=solid),
+// so it's exercised through the new-form paths instead.
+async function runRegenCells() {
+  const page = await context.newPage()
+  await login(page)
+  const { postId } = await generateCarousel(page, { mode: 'manual', layout: 'minimal', slideCount: 3 })
+  for (const layout of layouts.filter((l) => l !== 'editorial_gradient')) {
+    const cell = { mode: 'regen', layout, postId }
+    try {
+      await page.goto(`http://localhost:3000/carousel/${postId}`)
+      await page.click(`button:has(img[src*="/layout-previews/${layout}.png"])`)
+      await page.click('button:has-text("Regenerate Design")')
+      // Completion signal: the post row reflects the new layout (or the
+      // route errored — caught by the DB assert below staying stale).
+      const deadline = Date.now() + 120000
+      let row = null
+      while (Date.now() < deadline) {
+        const { rows } = await db.query(
+          `select status, layout_variant, jsonb_array_length(slide_documents) as doc_count
+           from carousel.posts where id = $1`,
+          [postId]
+        )
+        row = rows[0]
+        if (row?.layout_variant === layout) break
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      Object.assign(cell, row ?? {})
+      await page.goto(`http://localhost:3000/carousel/${postId}/editor`)
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {})
+      cell.editorOpens = (await page.locator('text=PROPERTI SLIDE').count()) > 0
+      cell.deadEnd = (await page.locator('text=belum punya dokumen slide').count()) > 0
+    } catch (err) {
+      cell.error = String(err).slice(0, 200)
+    }
+    results.push(cell)
+    console.log(JSON.stringify(cell))
+  }
+  await page.close()
+}
+
 try {
-  for (const mode of modes) {
+  if (modes.includes('regen')) await runRegenCells()
+  for (const mode of modes.filter((m) => m !== 'regen')) {
     for (const layout of layouts) {
       const page = await context.newPage()
       const cell = { mode, layout }
