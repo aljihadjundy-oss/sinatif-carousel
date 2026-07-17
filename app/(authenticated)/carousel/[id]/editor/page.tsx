@@ -1,10 +1,22 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { isSlideDocumentArray } from '@/lib/slideDocument'
+import { materializeSlideDocuments } from '@/lib/materialize-documents'
 import SlideEditor from './SlideEditor'
 import './editor-fonts.css'
 
+// Lazy materialization (AUDIT.md R4) replaced the old "belum punya
+// dokumen slide untuk diedit" dead-end that used to render here: if this
+// post's slide_documents is empty or shorter than its script — whatever
+// upstream failure caused that — the documents are compiled NOW from the
+// script + saved design options, persisted, and opened. The dead-end
+// message is deliberately gone from the codebase: there is no state left
+// that should show it (a post with no script gets a blank editable
+// fallback slide). Two real production causes this absorbs, both from
+// the 2026-07 bug reports: the designer route's final posts UPDATE
+// failing silently (layout_variant CHECK-constraint violation, its error
+// never read), and the designer route failing outright after script
+// generation (timeout/render error) so no document write ever ran.
 export default async function SlideEditorPage({
   params,
   searchParams,
@@ -13,29 +25,40 @@ export default async function SlideEditorPage({
   searchParams: Promise<{ warning?: string }>
 }) {
   const { id } = await params
-  // Bug fix: /api/carousel/designer can return 200 (PNGs all rendered)
-  // while still failing to compile one or more slides into an editable
-  // SlideDocument. NewCarouselForm forwards that as ?warning=... on the
-  // redirect straight into this page instead of it vanishing into a
-  // server console.error — so "kenapa slide-nya nggak semua ada" has an
-  // answer right here instead of just an unexplained empty/partial
-  // canvas.
+  // The designer route can succeed overall while degrading individual
+  // slides (see slide_documents_warning) — NewCarouselForm forwards that
+  // as ?warning=... so the explanation lands where the user actually is.
   const { warning } = await searchParams
   const supabase = await createServerSupabaseClient()
 
   const { data: post } = await supabase
     .schema('carousel')
     .from('posts')
-    .select('id, topic, slide_documents')
+    .select(
+      'id, topic, layout_variant, color_scheme, text_density, hierarchy, background_image_url, icon_name, typography_preset, slide_overrides, slide_documents, brand_profile_id'
+    )
     .eq('id', id)
     .single()
 
   if (!post) notFound()
 
-  // JSONB straight from the DB — validate the shape before trusting it
-  // (rows written before migration 0012 default to [], and a future
-  // schema version bump must fail closed here, not crash the canvas).
-  const documents = isSlideDocumentArray(post.slide_documents) ? post.slide_documents : []
+  const { documents, fallbackSlideOrders, materialized } = await materializeSlideDocuments(
+    supabase,
+    post
+  )
+  if (materialized) {
+    console.log(
+      `editor: lazily materialized ${documents.length} slide document(s) for post ${post.id}` +
+        (fallbackSlideOrders.length > 0
+          ? ` (fallback layout for slide ${fallbackSlideOrders.join(', ')})`
+          : '')
+    )
+  }
+
+  const fallbackNotice =
+    fallbackSlideOrders.length > 0
+      ? `Slide ${fallbackSlideOrders.join(', ')} dibuka dengan layout sederhana karena template aslinya gagal disiapkan — isinya tetap lengkap dan bisa diedit.`
+      : null
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-8">
@@ -51,21 +74,13 @@ export default async function SlideEditorPage({
         </Link>
       </div>
 
-      {warning && (
+      {(warning || fallbackNotice) && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-          {warning}
+          {warning ?? fallbackNotice}
         </p>
       )}
 
-      {documents.length === 0 ? (
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Post ini belum punya dokumen slide untuk diedit. Generate ulang desainnya dulu dari
-          halaman post (slide_documents terisi otomatis di setiap generate sejak fase 2), lalu
-          buka editor ini lagi.
-        </p>
-      ) : (
-        <SlideEditor postId={post.id} documents={documents} />
-      )}
+      <SlideEditor postId={post.id} documents={documents} />
     </div>
   )
 }
