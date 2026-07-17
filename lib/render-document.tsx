@@ -26,6 +26,7 @@ import {
   SlideDocument,
   SlideNode,
   TextNode,
+  imageFillLayerStyle,
 } from '@/lib/slideDocument'
 
 type Fonts = Awaited<ReturnType<typeof loadFontsForBrand>>
@@ -187,14 +188,9 @@ export async function renderDocument(doc: SlideDocument, fonts?: Fonts): Promise
         src: background.src,
         width: doc.canvas.width,
         height: doc.canvas.height,
-        style: {
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: doc.canvas.width,
-          height: doc.canvas.height,
-          objectFit: background.fit,
-        },
+        // Shared with the editor's SlideCanvas — pan/zoom (ImageFill
+        // scale/offsetX/offsetY) must export exactly as previewed.
+        style: imageFillLayerStyle(background, doc.canvas),
       })
     )
   }

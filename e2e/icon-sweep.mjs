@@ -87,7 +87,21 @@ try {
       continue
     }
     const buf = Buffer.from(await pngRes.body())
-    const region = await sharp(buf).extract({ left: 340, top: 475, width: 400, height: 400 }).stats()
+    // Materialize the crop first: sharp's .stats() ignores a chained
+    // .extract() and would otherwise measure the whole image. Region is
+    // scaled to the actual export size (may differ from 1080x1350).
+    const meta = await sharp(buf).metadata()
+    const sx = (meta.width ?? 1080) / 1080
+    const sy = (meta.height ?? 1350) / 1350
+    const regionBuf = await sharp(buf)
+      .extract({
+        left: Math.round(340 * sx),
+        top: Math.round(475 * sy),
+        width: Math.round(400 * sx),
+        height: Math.round(400 * sy),
+      })
+      .toBuffer()
+    const region = await sharp(regionBuf).stats()
     const darkest = Math.min(...region.channels.slice(0, 3).map((c) => c.min))
     if (darkest > 200) {
       // Region stayed (near-)white -> the icon did not draw in the export.

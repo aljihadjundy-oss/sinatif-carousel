@@ -191,6 +191,71 @@ export default function SlidePropertiesPanel({
           </div>
         )}
 
+        {bg.type === 'image' && (
+          // Background adjust (bug-4b, Canva-parity request): pan the
+          // crop and zoom in/out. Values live on the ImageFill itself
+          // (scale/offsetX/offsetY) and render through the shared
+          // imageFillLayerStyle() in BOTH the canvas and the exporter,
+          // so what these sliders show is exactly what the PNG exports.
+          <div className="mt-1.5 space-y-1">
+            <span className="block text-xs text-gray-500 dark:text-gray-400">
+              Atur foto background
+            </span>
+            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              Zoom
+              <input
+                type="range"
+                min={100}
+                max={300}
+                step={5}
+                value={Math.round((bg.scale ?? 1) * 100)}
+                onChange={(e) => setBackground({ ...bg, scale: Number(e.target.value) / 100 })}
+                onPointerUp={onCommit}
+                className="flex-1"
+              />
+              {Math.round((bg.scale ?? 1) * 100)}%
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              Geser X
+              <input
+                type="range"
+                min={-540}
+                max={540}
+                step={10}
+                value={bg.offsetX ?? 0}
+                onChange={(e) => setBackground({ ...bg, offsetX: Number(e.target.value) })}
+                onPointerUp={onCommit}
+                className="flex-1"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              Geser Y
+              <input
+                type="range"
+                min={-675}
+                max={675}
+                step={10}
+                value={bg.offsetY ?? 0}
+                onChange={(e) => setBackground({ ...bg, offsetY: Number(e.target.value) })}
+                onPointerUp={onCommit}
+                className="flex-1"
+              />
+            </label>
+            {((bg.scale ?? 1) !== 1 || (bg.offsetX ?? 0) !== 0 || (bg.offsetY ?? 0) !== 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBackground({ type: 'image', src: bg.src, fit: bg.fit })
+                  onCommit()
+                }}
+                className="w-full rounded border border-gray-300 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Reset posisi foto
+              </button>
+            )}
+          </div>
+        )}
+
         {onUploadBackgroundPhoto && (
           <>
             <input

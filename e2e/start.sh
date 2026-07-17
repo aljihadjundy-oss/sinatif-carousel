@@ -15,8 +15,14 @@ mkdir -p "$DATA"
 "$DIR/db-setup.sh"
 
 pkill -f 'e2e/supashim.mjs' 2>/dev/null || true
+# next dev spawns a detached next-server worker that outlives its parent;
+# kill both or the new instance silently binds :3001 instead of :3000.
 pkill -f 'next dev' 2>/dev/null || true
-sleep 1
+pkill -f 'next-server' 2>/dev/null || true
+for _ in $(seq 1 10); do
+  ss -tln 2>/dev/null | grep -q ':3000 ' || break
+  sleep 1
+done
 
 node "$DIR/supashim.mjs" > "$DATA/shim.log" 2>&1 &
 echo $! > "$DATA/shim.pid"
